@@ -1937,6 +1937,8 @@ find_page:
 
 		page = find_get_page(mapping, index);
 		if (!page) {
+			if (iocb->ki_flags & IOCB_NOWAIT)
+				goto would_block;
 			page_cache_sync_readahead(mapping,
 					ra, filp,
 					index, last_index - index);
@@ -1950,6 +1952,11 @@ find_page:
 					index, last_index - index);
 		}
 		if (!PageUptodate(page)) {
+			if (iocb->ki_flags & IOCB_NOWAIT) {
+				put_page(page);
+				goto would_block;
+			}
+
 			/*
 			 * See comment in do_read_cache_page on why
 			 * wait_on_page_locked is used to avoid unnecessarily
@@ -2131,6 +2138,8 @@ no_cached_page:
 		goto readpage;
 	}
 
+would_block:
+	error = -EAGAIN;
 out:
 	ra->prev_pos = prev_index;
 	ra->prev_pos <<= PAGE_SHIFT;
