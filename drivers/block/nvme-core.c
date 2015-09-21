@@ -86,7 +86,7 @@ static struct class *nvme_class;
 
 static void nvme_reset_failed_dev(struct work_struct *ws);
 static int nvme_reset(struct nvme_dev *dev);
-static int nvme_process_cq(struct nvme_queue *nvmeq);
+static void nvme_process_cq(struct nvme_queue *nvmeq);
 
 struct async_cmd_info {
 	struct kthread_work work;
@@ -942,7 +942,7 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	return BLK_MQ_RQ_QUEUE_BUSY;
 }
 
-static int nvme_process_cq(struct nvme_queue *nvmeq)
+static void __nvme_process_cq(struct nvme_queue *nvmeq, unsigned int *tag)
 {
 	u16 head, phase;
 
@@ -960,6 +960,8 @@ static int nvme_process_cq(struct nvme_queue *nvmeq)
 			head = 0;
 			phase = !phase;
 		}
+		if (tag && *tag == cqe.command_id)
+			*tag = -1;
 		ctx = nvme_finish_cmd(nvmeq, cqe.command_id, &fn);
 		fn(nvmeq, ctx, &cqe);
 	}
@@ -971,14 +973,18 @@ static int nvme_process_cq(struct nvme_queue *nvmeq)
 	 * a big problem.
 	 */
 	if (head == nvmeq->cq_head && phase == nvmeq->cq_phase)
-		return 0;
+		return;
 
 	writel(head, nvmeq->q_db + nvmeq->dev->db_stride);
 	nvmeq->cq_head = head;
 	nvmeq->cq_phase = phase;
 
 	nvmeq->cqe_seen = 1;
-	return 1;
+}
+
+static void nvme_process_cq(struct nvme_queue *nvmeq)
+{
+	__nvme_process_cq(nvmeq, NULL);
 }
 
 static irqreturn_t nvme_irq(int irq, void *data)
@@ -1000,6 +1006,23 @@ static irqreturn_t nvme_irq_check(int irq, void *data)
 	if ((le16_to_cpu(cqe.status) & 1) != nvmeq->cq_phase)
 		return IRQ_NONE;
 	return IRQ_WAKE_THREAD;
+}
+
+static int nvme_poll(struct blk_mq_hw_ctx *hctx, unsigned int tag)
+{
+	struct nvme_queue *nvmeq = hctx->driver_data;
+
+	if ((le16_to_cpu(nvmeq->cqes[nvmeq->cq_head].status) & 1) ==
+	    nvmeq->cq_phase) {
+		spin_lock_irq(&nvmeq->q_lock);
+		__nvme_process_cq(nvmeq, &tag);
+		spin_unlock_irq(&nvmeq->q_lock);
+
+		if (tag == -1)
+			return 1;
+	}
+
+	return 0;
 }
 
 /*
@@ -1666,6 +1689,7 @@ static struct blk_mq_ops nvme_mq_ops = {
 	.init_hctx	= nvme_init_hctx,
 	.init_request	= nvme_init_request,
 	.timeout	= nvme_timeout,
+	.poll		= nvme_poll,
 };
 
 static void nvme_dev_remove_admin(struct nvme_dev *dev)
