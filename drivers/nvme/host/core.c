@@ -80,7 +80,7 @@ static struct request *nvme_alloc_request(struct request_queue *q,
 	bool write = cmd->common.opcode & 1;
 	struct request *req;
 
-	req = blk_mq_alloc_request(q, write, GFP_KERNEL, false);
+	req = blk_mq_alloc_request(q, write, 0);
 	if (IS_ERR(req))
 		return req;
 

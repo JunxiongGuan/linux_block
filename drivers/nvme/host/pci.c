@@ -943,7 +943,8 @@ static int nvme_submit_async_admin_req(struct nvme_dev *dev)
 	struct nvme_cmd_info *cmd_info;
 	struct request *req;
 
-	req = blk_mq_alloc_request(dev->ctrl.admin_q, WRITE, GFP_ATOMIC, true);
+	req = blk_mq_alloc_request(dev->ctrl.admin_q, WRITE,
+			BLK_MQ_REQ_NOWAIT | BLK_MQ_REQ_RESERVED);
 	if (IS_ERR(req))
 		return PTR_ERR(req);
 
@@ -968,7 +969,7 @@ static int nvme_submit_admin_async_cmd(struct nvme_dev *dev,
 	struct request *req;
 	struct nvme_cmd_info *cmd_rq;
 
-	req = blk_mq_alloc_request(dev->ctrl.admin_q, WRITE, GFP_KERNEL, false);
+	req = blk_mq_alloc_request(dev->ctrl.admin_q, WRITE, 0);
 	if (IS_ERR(req))
 		return PTR_ERR(req);
 
@@ -1083,8 +1084,8 @@ static enum blk_eh_timer_return nvme_timeout(struct request *req, bool reserved)
 	if (atomic_dec_and_test(&dev->ctrl.abort_limit))
 		return BLK_EH_RESET_TIMER;
 
-	abort_req = blk_mq_alloc_request(dev->ctrl.admin_q, WRITE, GFP_ATOMIC,
-									false);
+	abort_req = blk_mq_alloc_request(dev->ctrl.admin_q, WRITE,
+			BLK_MQ_REQ_NOWAIT);
 	if (IS_ERR(abort_req)) {
 		atomic_inc(&dev->ctrl.abort_limit);
 		return BLK_EH_RESET_TIMER;
