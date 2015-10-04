@@ -1299,7 +1299,7 @@ static blk_qc_t blk_mq_make_request(struct request_queue *q, struct bio *bio)
 	 * queue it up like normal since we can potentially save some
 	 * CPU this way.
 	 */
-	if (((plug && !blk_queue_nomerges(q)) || is_sync) &&
+	if (0 && ((plug && !blk_queue_nomerges(q)) || is_sync) &&
 	    !(data.hctx->flags & BLK_MQ_F_DEFER_ISSUE)) {
 		struct request *old_rq = NULL;
 
