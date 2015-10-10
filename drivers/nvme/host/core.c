@@ -81,12 +81,15 @@ int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 	return __nvme_submit_sync_cmd(q, cmd, buffer, bufflen, NULL, 0);
 }
 
-int nvme_submit_user_cmd(struct request_queue *q, struct nvme_command *cmd,
-		void __user *ubuffer, unsigned bufflen, u32 *result,
-		unsigned timeout)
+int __nvme_submit_user_cmd(struct request_queue *q, struct nvme_command *cmd,
+		void __user *ubuffer, unsigned bufflen,
+		void __user *meta_buffer, unsigned meta_len, u32 meta_seed,
+		u32 *result, unsigned timeout)
 {
-	struct bio *bio = NULL;
+	bool write = cmd->common.opcode & 1;
 	struct request *req;
+	struct bio *bio = NULL;
+	void *meta = NULL;
 	int ret;
 
 	req = nvme_alloc_request(q, cmd);
@@ -94,24 +97,74 @@ int nvme_submit_user_cmd(struct request_queue *q, struct nvme_command *cmd,
 		return PTR_ERR(req);
 
 	req->timeout = timeout ? timeout : ADMIN_TIMEOUT;
-
+	
 	if (ubuffer && bufflen) {
 		ret = blk_rq_map_user(q, req, NULL, ubuffer, bufflen,
 				__GFP_WAIT);
 		if (ret)
 			goto out;
 		bio = req->bio;
+
+		if (meta_buffer) {
+			struct bio_integrity_payload *bip;
+
+			meta = kmalloc(meta_len, GFP_KERNEL);
+			if (!meta) {
+				ret = -ENOMEM;
+				goto out_unmap;
+			}
+
+			if (write) {
+				if (copy_from_user(meta, meta_buffer,
+						meta_len)) {
+					ret = -EFAULT;
+					goto out_free_meta;
+				}
+			}
+
+			bip = bio_integrity_alloc(bio, GFP_KERNEL, 1);
+			if (!bip) {
+				ret = -ENOMEM;
+				goto out_free_meta;
+			}
+
+			bip->bip_iter.bi_size = meta_len;
+			bip->bip_iter.bi_sector = meta_seed;
+
+			ret = bio_integrity_add_page(bio, virt_to_page(meta),
+					meta_len, offset_in_page(meta));
+			if (ret != meta_len) {
+				ret = -ENOMEM;
+				goto out_free_meta;
+			}
+		}
 	}
 
 	blk_execute_rq(req->q, NULL, req, 0);
-	if (bio)
-		blk_rq_unmap_user(bio);
+	ret = req->errors;
 	if (result)
 		*result = (u32)(uintptr_t)req->special;
-	ret = req->errors;
+	if (meta && !ret && !write) {
+		if (copy_to_user(meta_buffer, meta, meta_len))
+			ret = -EFAULT;
+	}
+
+ out_free_meta:
+	kfree(meta);
+ out_unmap:
+	if (bio)
+		blk_rq_unmap_user(bio);
  out:
 	blk_mq_free_request(req);
 	return ret;
+}
+
+int nvme_submit_user_cmd(struct request_queue *q, struct nvme_command *cmd,
+		void __user *ubuffer, unsigned bufflen, u32 *result,
+		unsigned timeout)
+{
+	return __nvme_submit_user_cmd(q, cmd, ubuffer, bufflen, NULL, 0, 0,
+			result, timeout);
 }
 
 int nvme_identify_ctrl(struct nvme_ctrl *dev, struct nvme_id_ctrl **id)
