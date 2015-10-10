@@ -83,8 +83,10 @@ static inline u64 nvme_block_nr(struct nvme_ns *ns, sector_t sector)
 int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 		void *buf, unsigned bufflen);
 int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
-		void *buffer, void __user *ubuffer, unsigned bufflen,
-		u32 *result, unsigned timeout);
+		void *buffer, unsigned bufflen,  u32 *result, unsigned timeout);
+int nvme_submit_user_cmd(struct request_queue *q, struct nvme_command *cmd,
+		void __user *ubuffer, unsigned bufflen, u32 *result,
+		unsigned timeout);
 int nvme_identify_ctrl(struct nvme_ctrl *dev, struct nvme_id_ctrl **id);
 int nvme_identify_ns(struct nvme_ctrl *dev, unsigned nsid,
 		struct nvme_id_ns **id);
