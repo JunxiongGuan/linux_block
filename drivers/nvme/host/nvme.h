@@ -19,8 +19,6 @@
 #include <linux/kref.h>
 #include <linux/blk-mq.h>
 
-struct nvme_passthru_cmd;
-
 extern unsigned char nvme_io_timeout;
 #define NVME_IO_TIMEOUT	(nvme_io_timeout * HZ)
 
@@ -48,6 +46,7 @@ struct nvme_ctrl {
 	struct blk_mq_tag_set *tagset;
 	struct list_head namespaces;
 	struct device *device;	/* char device */
+	struct list_head node;
 
 	char name[12];
 	char serial[20];
@@ -60,6 +59,8 @@ struct nvme_ctrl {
 	u16 abort_limit;
 	u8 event_limit;
 	u8 vwc;
+	u32 vs;
+	bool subsystem;
 	u16 vendor;
 	unsigned long quirks;
 };
@@ -87,7 +88,9 @@ struct nvme_ns {
 struct nvme_ctrl_ops {
 	int (*reg_read32)(struct nvme_ctrl *ctrl, u32 off, u32 *val);
 	int (*reg_read64)(struct nvme_ctrl *ctrl, u32 off, u64 *val);
+	int (*reg_write32)(struct nvme_ctrl *ctrl, u32 off, u32 val);
 	bool (*io_incapable)(struct nvme_ctrl *ctrl);
+	int (*reset_ctrl)(struct nvme_ctrl *ctrl);
 	void (*free_ctrl)(struct nvme_ctrl *ctrl);
 };
 
@@ -111,11 +114,21 @@ static inline bool nvme_io_incapable(struct nvme_ctrl *ctrl)
 	return val & NVME_CSTS_CFS;
 }
 
+static inline int nvme_reset_subsystem(struct nvme_ctrl *ctrl)
+{
+	if (!ctrl->subsystem)
+		return -ENOTTY;
+	return ctrl->ops->reg_write32(ctrl, NVME_REG_NSSR, 0x4E564D65);
+}
+
 static inline u64 nvme_block_nr(struct nvme_ns *ns, sector_t sector)
 {
 	return (sector >> (ns->lba_shift - 9));
 }
 
+int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
+		const struct nvme_ctrl_ops *ops, u16 vendor,
+		unsigned long quirks);
 void nvme_put_ctrl(struct nvme_ctrl *ctrl);
 int nvme_init_identify(struct nvme_ctrl *ctrl);
 
@@ -143,9 +156,6 @@ void nvme_scan_namespaces(struct nvme_ctrl *ctrl);
 void nvme_remove_namespaces(struct nvme_ctrl *ctrl);
 
 extern spinlock_t dev_list_lock;
-
-int nvme_user_cmd(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
-			struct nvme_passthru_cmd __user *ucmd);
 
 struct sg_io_hdr;
 
