@@ -1092,7 +1092,13 @@ static enum blk_eh_timer_return nvme_timeout(struct request *req, bool reserved)
 				 req->tag, nvmeq->qid);
 		}
 		spin_unlock_irq(&dev_list_lock);
-		return BLK_EH_RESET_TIMER;
+
+		/*
+		 * Mark the request as quiesced, that is don't do anything with
+		 * it until the error completion from the controller reset
+		 * comes in.
+		 */
+		return BLK_EH_QUIESCED;
 	}
 
 	if (!dev->ctrl.abort_limit)
