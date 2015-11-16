@@ -1057,6 +1057,14 @@ static enum blk_eh_timer_return nvme_timeout(struct request *req, bool reserved)
 	struct nvme_command cmd;
 
 	/*
+	 * Just return an error to reset_work.
+	 */
+	if (test_bit(NVME_CTRL_RESETTING, &dev->flags)) {
+		req->errors = -EIO;
+		return BLK_EH_HANDLED;
+	}
+
+	/*
 	 * Schedule controller reset if the command was already aborted once
 	 * before and still hasn't been returned to the driver, or if this is
 	 * the admin queue.
@@ -2191,14 +2199,8 @@ static void nvme_reset_work(struct work_struct *work)
 	struct nvme_dev *dev = container_of(work, struct nvme_dev, reset_work);
 	int result;
 
-	/*
-	 * Fail this device if reset occured during probe to avoid infinite
-	 * initialization loops.
-	 */
-	if (test_bit(NVME_CTRL_RESETTING, &dev->flags)) {
-		nvme_remove_dead_ctrl(dev);
-		return;
-	}
+	if (WARN_ON(test_bit(NVME_CTRL_RESETTING, &dev->flags)))
+		goto out;
 
 	/*
 	 * If we're called to reset a live controller first shut it down before
