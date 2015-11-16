@@ -2280,7 +2280,7 @@ static void nvme_remove_dead_ctrl(struct nvme_dev *dev)
 {
 	dev_warn(dev->dev, "Removing after probe failure\n");
 	kref_get(&dev->ctrl.kref);
-	if (!queue_work(nvme_workq, &dev->remove_work))
+	if (!schedule_work(&dev->remove_work))
 		nvme_put_ctrl(&dev->ctrl);
 }
 
