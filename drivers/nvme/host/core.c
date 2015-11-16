@@ -77,13 +77,13 @@ static struct nvme_ns *nvme_get_ns_from_disk(struct gendisk *disk)
 	return ns;
 }
 
-static struct request *nvme_alloc_request(struct request_queue *q,
-		struct nvme_command *cmd)
+struct request *nvme_alloc_request(struct request_queue *q,
+		struct nvme_command *cmd, unsigned int flags)
 {
 	bool write = cmd->common.opcode & 1;
 	struct request *req;
 
-	req = blk_mq_alloc_request(q, write, 0);
+	req = blk_mq_alloc_request(q, write, flags);
 	if (IS_ERR(req))
 		return req;
 
@@ -110,7 +110,7 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 	struct request *req;
 	int ret;
 
-	req = nvme_alloc_request(q, cmd);
+	req = nvme_alloc_request(q, cmd, 0);
 	if (IS_ERR(req))
 		return PTR_ERR(req);
 
@@ -150,7 +150,7 @@ int __nvme_submit_user_cmd(struct request_queue *q, struct nvme_command *cmd,
 	void *meta = NULL;
 	int ret;
 
-	req = nvme_alloc_request(q, cmd);
+	req = nvme_alloc_request(q, cmd, 0);
 	if (IS_ERR(req))
 		return PTR_ERR(req);
 
