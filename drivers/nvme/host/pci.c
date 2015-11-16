@@ -765,6 +765,16 @@ static void __nvme_process_cq(struct nvme_queue *nvmeq, unsigned int *tag)
 			continue;
 		}
 
+{
+		static int counter = 0;
+
+		if (nvmeq->qid && (++counter % 2095) == 0) {
+			printk("failing command ID %d.\n",
+				cqe.command_id);
+			continue;
+		}
+}
+
 		req = blk_mq_tag_to_rq(*nvmeq->tags, cqe.command_id);
 		if (req->cmd_type == REQ_TYPE_DRV_PRIV) {
 			u32 result = le32_to_cpu(cqe.result);
