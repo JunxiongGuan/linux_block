@@ -55,6 +55,8 @@ struct nvme_ctrl {
 	char serial[20];
 	char model[40];
 	char firmware_rev[8];
+	u32 max_hw_sectors;
+	u32 stripe_size;
 	u16 oncs;
 	u16 abort_limit;
 	u8 event_limit;
@@ -85,6 +87,7 @@ struct nvme_ns {
 
 struct nvme_ctrl_ops {
 	int (*reg_read32)(struct nvme_ctrl *ctrl, u32 off, u32 *val);
+	int (*reg_read64)(struct nvme_ctrl *ctrl, u32 off, u64 *val);
 	void (*free_ctrl)(struct nvme_ctrl *ctrl);
 };
 
@@ -166,6 +169,7 @@ static inline int nvme_error_status(u16 status)
 }
 
 void nvme_put_ctrl(struct nvme_ctrl *ctrl);
+int nvme_init_identify(struct nvme_ctrl *ctrl);
 void nvme_put_ns(struct nvme_ns *ns);
 
 struct request *nvme_alloc_request(struct request_queue *q,
