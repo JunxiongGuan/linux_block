@@ -383,7 +383,8 @@ void blk_mq_complete_request(struct request *rq, int error)
 
 	if (unlikely(blk_should_fake_timeout(q)))
 		return;
-	if (!blk_mark_rq_complete(rq)) {
+	if (!blk_mark_rq_complete(rq) ||
+	    test_and_clear_bit(REQ_ATOM_QUIESCED, &rq->atomic_flags)) {
 		rq->errors = error;
 		__blk_mq_complete_request(rq);
 	}
@@ -585,6 +586,9 @@ void blk_mq_rq_timed_out(struct request *req, bool reserved)
 		blk_clear_rq_complete(req);
 		break;
 	case BLK_EH_NOT_HANDLED:
+		break;
+	case BLK_EH_QUIESCED:
+		set_bit(REQ_ATOM_QUIESCED, &req->atomic_flags);
 		break;
 	default:
 		printk(KERN_ERR "block: bad eh return: %d\n", ret);

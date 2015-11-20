@@ -96,6 +96,9 @@ static void blk_rq_timed_out(struct request *req)
 		blk_add_timer(req);
 		blk_clear_rq_complete(req);
 		break;
+	case BLK_EH_QUIESCED:
+		set_bit(REQ_ATOM_QUIESCED, &req->atomic_flags);
+		break;
 	case BLK_EH_NOT_HANDLED:
 		/*
 		 * LLD handles this for now but in the future

@@ -167,7 +167,8 @@ void blk_complete_request(struct request *req)
 {
 	if (unlikely(blk_should_fake_timeout(req->q)))
 		return;
-	if (!blk_mark_rq_complete(req))
+	if (!blk_mark_rq_complete(req) ||
+	    test_and_clear_bit(REQ_ATOM_QUIESCED, &req->atomic_flags))
 		__blk_complete_request(req);
 }
 EXPORT_SYMBOL(blk_complete_request);
