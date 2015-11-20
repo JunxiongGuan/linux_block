@@ -50,6 +50,9 @@ struct nvme_ctrl {
 	struct device *dev;
 	struct kref kref;
 	int instance;
+	struct blk_mq_tag_set *tagset;
+	struct list_head namespaces;
+	struct device *device;	/* char device */
 
 	char name[12];
 	char serial[20];
@@ -57,6 +60,7 @@ struct nvme_ctrl {
 	char firmware_rev[8];
 	u32 max_hw_sectors;
 	u32 stripe_size;
+	u32 page_size;
 	u16 oncs;
 	u16 abort_limit;
 	u8 event_limit;
@@ -88,6 +92,7 @@ struct nvme_ns {
 struct nvme_ctrl_ops {
 	int (*reg_read32)(struct nvme_ctrl *ctrl, u32 off, u32 *val);
 	int (*reg_read64)(struct nvme_ctrl *ctrl, u32 off, u64 *val);
+	bool (*io_incapable)(struct nvme_ctrl *ctrl);
 	void (*free_ctrl)(struct nvme_ctrl *ctrl);
 };
 
@@ -98,6 +103,17 @@ static inline bool nvme_ctrl_ready(struct nvme_ctrl *ctrl)
 	if (ctrl->ops->reg_read32(ctrl, NVME_REG_CSTS, &val))
 		return false;
 	return val & NVME_CSTS_RDY;
+}
+
+static inline bool nvme_io_incapable(struct nvme_ctrl *ctrl)
+{
+	u32 val = 0;
+
+	if (ctrl->ops->io_incapable(ctrl))
+		return false;
+	if (ctrl->ops->reg_read32(ctrl, NVME_REG_CSTS, &val))
+		return false;
+	return val & NVME_CSTS_CFS;
 }
 
 static inline u64 nvme_block_nr(struct nvme_ns *ns, sector_t sector)
@@ -170,7 +186,9 @@ static inline int nvme_error_status(u16 status)
 
 void nvme_put_ctrl(struct nvme_ctrl *ctrl);
 int nvme_init_identify(struct nvme_ctrl *ctrl);
-void nvme_put_ns(struct nvme_ns *ns);
+
+void nvme_scan_namespaces(struct nvme_ctrl *ctrl);
+void nvme_remove_namespaces(struct nvme_ctrl *ctrl);
 
 struct request *nvme_alloc_request(struct request_queue *q,
 		struct nvme_command *cmd, unsigned int flags);
@@ -194,10 +212,8 @@ int nvme_get_features(struct nvme_ctrl *dev, unsigned fid, unsigned nsid,
 int nvme_set_features(struct nvme_ctrl *dev, unsigned fid, unsigned dword11,
 			dma_addr_t dma_addr, u32 *result);
 
-extern const struct block_device_operations nvme_fops;
 extern spinlock_t dev_list_lock;
 
-int nvme_revalidate_disk(struct gendisk *disk);
 int nvme_user_cmd(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
 			struct nvme_passthru_cmd __user *ucmd);
 
@@ -210,5 +226,8 @@ int nvme_sg_get_version_num(int __user *ip);
 int nvme_nvm_ns_supported(struct nvme_ns *ns, struct nvme_id_ns *id);
 int nvme_nvm_register(struct request_queue *q, char *disk_name);
 void nvme_nvm_unregister(struct request_queue *q, char *disk_name);
+
+int __init nvme_core_init(void);
+void nvme_core_exit(void);
 
 #endif /* _NVME_H */
