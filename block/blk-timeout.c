@@ -94,7 +94,7 @@ static void blk_rq_timed_out(struct request *req)
 		break;
 	case BLK_EH_RESET_TIMER:
 		blk_add_timer(req);
-		blk_clear_rq_complete(req);
+		clear_bit(REQ_ATOM_COMPLETE, &req->atomic_flags);
 		break;
 	case BLK_EH_QUIESCED:
 		set_bit(REQ_ATOM_QUIESCED, &req->atomic_flags);
@@ -122,7 +122,7 @@ static void blk_rq_check_expired(struct request *rq, unsigned long *next_timeout
 		/*
 		 * Check if we raced with end io completion
 		 */
-		if (!blk_mark_rq_complete(rq))
+		if (!test_and_set_bit(REQ_ATOM_COMPLETE, &rq->atomic_flags))
 			blk_rq_timed_out(rq);
 	} else if (!*next_set || time_after(*next_timeout, rq->deadline)) {
 		*next_timeout = rq->deadline;
@@ -160,7 +160,7 @@ void blk_timeout_work(struct work_struct *work)
  */
 void blk_abort_request(struct request *req)
 {
-	if (blk_mark_rq_complete(req))
+	if (test_and_set_bit(REQ_ATOM_COMPLETE, &req->atomic_flags))
 		return;
 
 	if (req->q->mq_ops) {

@@ -383,7 +383,7 @@ void blk_mq_complete_request(struct request *rq, int error)
 
 	if (unlikely(blk_should_fake_timeout(q)))
 		return;
-	if (!blk_mark_rq_complete(rq) ||
+	if (!test_and_set_bit(REQ_ATOM_COMPLETE, &rq->atomic_flags) ||
 	    test_and_clear_bit(REQ_ATOM_QUIESCED, &rq->atomic_flags)) {
 		rq->errors = error;
 		__blk_mq_complete_request(rq);
@@ -583,7 +583,7 @@ void blk_mq_rq_timed_out(struct request *req, bool reserved)
 		break;
 	case BLK_EH_RESET_TIMER:
 		blk_add_timer(req);
-		blk_clear_rq_complete(req);
+		clear_bit(REQ_ATOM_COMPLETE, &req->atomic_flags);
 		break;
 	case BLK_EH_NOT_HANDLED:
 		break;
@@ -614,7 +614,7 @@ static void blk_mq_check_expired(struct blk_mq_hw_ctx *hctx,
 		return;
 
 	if (time_after_eq(jiffies, rq->deadline)) {
-		if (!blk_mark_rq_complete(rq))
+		if (!test_and_set_bit(REQ_ATOM_COMPLETE, &rq->atomic_flags))
 			blk_mq_rq_timed_out(rq, reserved);
 	} else if (!data->next_set || time_after(data->next, rq->deadline)) {
 		data->next = rq->deadline;

@@ -1375,7 +1375,7 @@ EXPORT_SYMBOL(blk_rq_set_block_pc);
 void blk_requeue_request(struct request_queue *q, struct request *rq)
 {
 	blk_delete_timer(rq);
-	blk_clear_rq_complete(rq);
+	clear_bit(REQ_ATOM_COMPLETE, &rq->atomic_flags);
 	trace_block_rq_requeue(q, rq);
 
 	if (rq->cmd_flags & REQ_QUEUED)
