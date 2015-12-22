@@ -213,6 +213,10 @@ __SC_COMP(__NR_pwrite64, sys_pwrite64, compat_sys_pwrite64)
 __SC_COMP(__NR_preadv, sys_preadv, compat_sys_preadv)
 #define __NR_pwritev 70
 __SC_COMP(__NR_pwritev, sys_pwritev, compat_sys_pwritev)
+#define __NR_preadv2 282
+__SC_COMP(__NR_preadv2, sys_preadv2, compat_sys_preadv2)
+#define __NR_pwritev2 283
+__SC_COMP(__NR_pwritev2, sys_pwritev2, compat_sys_pwritev2)
 
 /* fs/sendfile.c */
 #define __NR3264_sendfile 71
@@ -717,7 +721,7 @@ __SYSCALL(__NR_membarrier, sys_membarrier)
 __SYSCALL(__NR_mlock2, sys_mlock2)
 
 #undef __NR_syscalls
-#define __NR_syscalls 285
+#define __NR_syscalls 287 // XXX: ???
 
 /*
  * All syscalls below here should go away really,
