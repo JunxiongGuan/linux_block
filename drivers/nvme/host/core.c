@@ -1034,6 +1034,8 @@ static struct nvme_ns *nvme_find_ns(struct nvme_ctrl *ctrl, unsigned nsid)
 {
 	struct nvme_ns *ns;
 
+	lockdep_assert_held(&ctrl->namespaces_mutex);
+
 	list_for_each_entry(ns, &ctrl->namespaces, list) {
 		if (ns->ns_id == nsid)
 			return ns;
@@ -1048,6 +1050,8 @@ static void nvme_alloc_ns(struct nvme_ctrl *ctrl, unsigned nsid)
 	struct nvme_ns *ns;
 	struct gendisk *disk;
 	int node = dev_to_node(ctrl->dev);
+
+	lockdep_assert_held(&ctrl->namespaces_mutex);
 
 	ns = kzalloc_node(sizeof(*ns), GFP_KERNEL, node);
 	if (!ns)
@@ -1117,6 +1121,8 @@ static void nvme_ns_remove(struct nvme_ns *ns)
 {
 	bool kill = nvme_io_incapable(ns->ctrl) &&
 			!blk_queue_dying(ns->queue);
+
+	lockdep_assert_held(&ns->ctrl->namespaces_mutex);
 
 	if (kill)
 		blk_set_queue_dying(ns->queue);
@@ -1188,6 +1194,8 @@ static void __nvme_scan_namespaces(struct nvme_ctrl *ctrl, unsigned nn)
 	struct nvme_ns *ns, *next;
 	unsigned i;
 
+	lockdep_assert_held(&ctrl->namespaces_mutex);
+
 	for (i = 1; i <= nn; i++)
 		nvme_validate_ns(ctrl, i);
 
@@ -1205,6 +1213,7 @@ void nvme_scan_namespaces(struct nvme_ctrl *ctrl)
 	if (nvme_identify_ctrl(ctrl, &id))
 		return;
 
+	mutex_lock(&ctrl->namespaces_mutex);
 	nn = le32_to_cpu(id->nn);
 	if (ctrl->vs >= NVME_VS(1, 1) &&
 	    !(ctrl->quirks & NVME_QUIRK_IDENTIFY_CNS)) {
@@ -1214,6 +1223,7 @@ void nvme_scan_namespaces(struct nvme_ctrl *ctrl)
 	__nvme_scan_namespaces(ctrl, le32_to_cpup(&id->nn));
  done:
 	list_sort(NULL, &ctrl->namespaces, ns_cmp);
+	mutex_unlock(&ctrl->namespaces_mutex);
 	kfree(id);
 }
 
@@ -1221,8 +1231,10 @@ void nvme_remove_namespaces(struct nvme_ctrl *ctrl)
 {
 	struct nvme_ns *ns, *next;
 
+	mutex_lock(&ctrl->namespaces_mutex);
 	list_for_each_entry_safe(ns, next, &ctrl->namespaces, list)
 		nvme_ns_remove(ns);
+	mutex_unlock(&ctrl->namespaces_mutex);
 }
 
 static DEFINE_IDA(nvme_instance_ida);
@@ -1290,6 +1302,7 @@ int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
 	int ret;
 
 	INIT_LIST_HEAD(&ctrl->namespaces);
+	mutex_init(&ctrl->namespaces_mutex);
 	kref_init(&ctrl->kref);
 	ctrl->dev = dev;
 	ctrl->ops = ops;

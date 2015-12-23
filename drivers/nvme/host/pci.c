@@ -1907,6 +1907,7 @@ static void nvme_freeze_queues(struct nvme_dev *dev)
 {
 	struct nvme_ns *ns;
 
+	mutex_lock(&dev->ctrl.namespaces_mutex);
 	list_for_each_entry(ns, &dev->ctrl.namespaces, list) {
 		blk_mq_freeze_queue_start(ns->queue);
 
@@ -1917,18 +1918,21 @@ static void nvme_freeze_queues(struct nvme_dev *dev)
 		blk_mq_cancel_requeue_work(ns->queue);
 		blk_mq_stop_hw_queues(ns->queue);
 	}
+	mutex_unlock(&dev->ctrl.namespaces_mutex);
 }
 
 static void nvme_unfreeze_queues(struct nvme_dev *dev)
 {
 	struct nvme_ns *ns;
 
+	mutex_lock(&dev->ctrl.namespaces_mutex);
 	list_for_each_entry(ns, &dev->ctrl.namespaces, list) {
 		queue_flag_clear_unlocked(QUEUE_FLAG_STOPPED, ns->queue);
 		blk_mq_unfreeze_queue(ns->queue);
 		blk_mq_start_stopped_hw_queues(ns->queue, true);
 		blk_mq_kick_requeue_list(ns->queue);
 	}
+	mutex_unlock(&dev->ctrl.namespaces_mutex);
 }
 
 static void nvme_dev_shutdown(struct nvme_dev *dev)
