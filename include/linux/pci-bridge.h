@@ -4,8 +4,8 @@
  * as published by the Free Software Foundation; either version
  * 2 of the License, or (at your option) any later version.
  */
-#ifndef _ASM_GENERIC_PCI_BRIDGE_H
-#define _ASM_GENERIC_PCI_BRIDGE_H
+#ifndef _LINUX_PCI_BRIDGE_H
+#define _LINUX_PCI_BRIDGE_H
 
 #ifdef __KERNEL__
 
@@ -71,4 +71,4 @@ static inline int pci_has_flag(int flag)
 #endif	/* CONFIG_PCI */
 
 #endif	/* __KERNEL__ */
-#endif	/* _ASM_GENERIC_PCI_BRIDGE_H */
+#endif	/* _LINUX_PCI_BRIDGE_H */

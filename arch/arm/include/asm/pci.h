@@ -3,7 +3,7 @@
 
 #ifdef __KERNEL__
 #include <asm-generic/pci-dma-compat.h>
-#include <asm-generic/pci-bridge.h>
+#include <linux/pci-bridge.h>
 
 #include <asm/mach/pci.h> /* for pci_sys_data */
 
