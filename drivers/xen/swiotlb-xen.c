@@ -47,6 +47,12 @@
 #include <asm/xen/page-coherent.h>
 
 #include <trace/events/swiotlb.h>
+
+static void
+xen_swiotlb_unmap_sg_attrs(struct device *hwdev, struct scatterlist *sgl,
+			   int nelems, enum dma_data_direction dir,
+			   struct dma_attrs *attrs);
+
 /*
  * Used to do a quick range check in swiotlb_tbl_unmap_single and
  * swiotlb_tbl_sync_single_*, to see if the memory was in fact allocated by this
@@ -291,7 +297,8 @@ error:
 		free_pages((unsigned long)xen_io_tlb_start, order);
 	return rc;
 }
-void *
+
+static void *
 xen_swiotlb_alloc_coherent(struct device *hwdev, size_t size,
 			   dma_addr_t *dma_handle, gfp_t flags,
 			   struct dma_attrs *attrs)
@@ -342,9 +349,8 @@ xen_swiotlb_alloc_coherent(struct device *hwdev, size_t size,
 	memset(ret, 0, size);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_alloc_coherent);
 
-void
+static void
 xen_swiotlb_free_coherent(struct device *hwdev, size_t size, void *vaddr,
 			  dma_addr_t dev_addr, struct dma_attrs *attrs)
 {
@@ -365,8 +371,6 @@ xen_swiotlb_free_coherent(struct device *hwdev, size_t size, void *vaddr,
 
 	xen_free_coherent_pages(hwdev, size, vaddr, (dma_addr_t)phys, attrs);
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_free_coherent);
-
 
 /*
  * Map a single buffer of the indicated size for DMA in streaming mode.  The
@@ -375,7 +379,7 @@ EXPORT_SYMBOL_GPL(xen_swiotlb_free_coherent);
  * Once the device is given the dma address, the device owns this memory until
  * either xen_swiotlb_unmap_page or xen_swiotlb_dma_sync_single is performed.
  */
-dma_addr_t xen_swiotlb_map_page(struct device *dev, struct page *page,
+static dma_addr_t xen_swiotlb_map_page(struct device *dev, struct page *page,
 				unsigned long offset, size_t size,
 				enum dma_data_direction dir,
 				struct dma_attrs *attrs)
@@ -422,7 +426,6 @@ dma_addr_t xen_swiotlb_map_page(struct device *dev, struct page *page,
 	}
 	return dev_addr;
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_map_page);
 
 /*
  * Unmap a single streaming mode DMA translation.  The dma_addr and size must
@@ -460,13 +463,12 @@ static void xen_unmap_single(struct device *hwdev, dma_addr_t dev_addr,
 	dma_mark_clean(phys_to_virt(paddr), size);
 }
 
-void xen_swiotlb_unmap_page(struct device *hwdev, dma_addr_t dev_addr,
+static void xen_swiotlb_unmap_page(struct device *hwdev, dma_addr_t dev_addr,
 			    size_t size, enum dma_data_direction dir,
 			    struct dma_attrs *attrs)
 {
 	xen_unmap_single(hwdev, dev_addr, size, dir, attrs);
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_unmap_page);
 
 /*
  * Make physical memory consistent for a single streaming mode DMA translation
@@ -503,21 +505,19 @@ xen_swiotlb_sync_single(struct device *hwdev, dma_addr_t dev_addr,
 	dma_mark_clean(phys_to_virt(paddr), size);
 }
 
-void
+static void
 xen_swiotlb_sync_single_for_cpu(struct device *hwdev, dma_addr_t dev_addr,
 				size_t size, enum dma_data_direction dir)
 {
 	xen_swiotlb_sync_single(hwdev, dev_addr, size, dir, SYNC_FOR_CPU);
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_sync_single_for_cpu);
 
-void
+static void
 xen_swiotlb_sync_single_for_device(struct device *hwdev, dma_addr_t dev_addr,
 				   size_t size, enum dma_data_direction dir)
 {
 	xen_swiotlb_sync_single(hwdev, dev_addr, size, dir, SYNC_FOR_DEVICE);
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_sync_single_for_device);
 
 /*
  * Map a set of buffers described by scatterlist in streaming mode for DMA.
@@ -535,7 +535,7 @@ EXPORT_SYMBOL_GPL(xen_swiotlb_sync_single_for_device);
  * Device ownership issues as mentioned above for xen_swiotlb_map_page are the
  * same here.
  */
-int
+static int
 xen_swiotlb_map_sg_attrs(struct device *hwdev, struct scatterlist *sgl,
 			 int nelems, enum dma_data_direction dir,
 			 struct dma_attrs *attrs)
@@ -590,13 +590,12 @@ xen_swiotlb_map_sg_attrs(struct device *hwdev, struct scatterlist *sgl,
 	}
 	return nelems;
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_map_sg_attrs);
 
 /*
  * Unmap a set of streaming mode DMA translations.  Again, cpu read rules
  * concerning calls here are the same as for swiotlb_unmap_page() above.
  */
-void
+static void
 xen_swiotlb_unmap_sg_attrs(struct device *hwdev, struct scatterlist *sgl,
 			   int nelems, enum dma_data_direction dir,
 			   struct dma_attrs *attrs)
@@ -610,7 +609,6 @@ xen_swiotlb_unmap_sg_attrs(struct device *hwdev, struct scatterlist *sgl,
 		xen_unmap_single(hwdev, sg->dma_address, sg_dma_len(sg), dir, attrs);
 
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_unmap_sg_attrs);
 
 /*
  * Make physical memory consistent for a set of streaming mode DMA translations
@@ -632,28 +630,25 @@ xen_swiotlb_sync_sg(struct device *hwdev, struct scatterlist *sgl,
 					sg_dma_len(sg), dir, target);
 }
 
-void
+static void
 xen_swiotlb_sync_sg_for_cpu(struct device *hwdev, struct scatterlist *sg,
 			    int nelems, enum dma_data_direction dir)
 {
 	xen_swiotlb_sync_sg(hwdev, sg, nelems, dir, SYNC_FOR_CPU);
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_sync_sg_for_cpu);
 
-void
+static void
 xen_swiotlb_sync_sg_for_device(struct device *hwdev, struct scatterlist *sg,
 			       int nelems, enum dma_data_direction dir)
 {
 	xen_swiotlb_sync_sg(hwdev, sg, nelems, dir, SYNC_FOR_DEVICE);
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_sync_sg_for_device);
 
-int
+static int
 xen_swiotlb_dma_mapping_error(struct device *hwdev, dma_addr_t dma_addr)
 {
 	return !dma_addr;
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_dma_mapping_error);
 
 /*
  * Return whether the given device DMA address mask can be supported
@@ -661,14 +656,13 @@ EXPORT_SYMBOL_GPL(xen_swiotlb_dma_mapping_error);
  * during bus mastering, then you would pass 0x00ffffff as the mask to
  * this function.
  */
-int
+static int
 xen_swiotlb_dma_supported(struct device *hwdev, u64 mask)
 {
 	return xen_virt_to_bus(xen_io_tlb_end - 1) <= mask;
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_dma_supported);
 
-int
+static int
 xen_swiotlb_set_dma_mask(struct device *dev, u64 dma_mask)
 {
 	if (!dev->dma_mask || !xen_swiotlb_dma_supported(dev, dma_mask))
@@ -678,4 +672,19 @@ xen_swiotlb_set_dma_mask(struct device *dev, u64 dma_mask)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(xen_swiotlb_set_dma_mask);
+
+struct dma_map_ops xen_swiotlb_dma_ops = {
+	.mapping_error = xen_swiotlb_dma_mapping_error,
+	.alloc = xen_swiotlb_alloc_coherent,
+	.free = xen_swiotlb_free_coherent,
+	.sync_single_for_cpu = xen_swiotlb_sync_single_for_cpu,
+	.sync_single_for_device = xen_swiotlb_sync_single_for_device,
+	.sync_sg_for_cpu = xen_swiotlb_sync_sg_for_cpu,
+	.sync_sg_for_device = xen_swiotlb_sync_sg_for_device,
+	.map_sg = xen_swiotlb_map_sg_attrs,
+	.unmap_sg = xen_swiotlb_unmap_sg_attrs,
+	.map_page = xen_swiotlb_map_page,
+	.unmap_page = xen_swiotlb_unmap_page,
+	.dma_supported = xen_swiotlb_dma_supported,
+	.set_dma_mask = xen_swiotlb_set_dma_mask,
+};
