@@ -46,24 +46,9 @@ static dma_addr_t map_page(struct device *dev, struct page *page,
 	return page_to_phys(page) + offset;
 }
 
-static int map_sg(struct device *dev, struct scatterlist *sgl,
-		  int nents, enum dma_data_direction direction,
-		  struct dma_attrs *attrs)
-{
-	struct scatterlist *sg;
-	int i;
-
-	for_each_sg(sgl, sg, nents, i) {
-		sg->dma_address = sg_phys(sg);
-	}
-
-	return nents;
-}
-
 struct dma_map_ops h8300_dma_map_ops = {
 	.alloc = dma_alloc,
 	.free = dma_free,
 	.map_page = map_page,
-	.map_sg = map_sg,
 };
 EXPORT_SYMBOL(h8300_dma_map_ops);

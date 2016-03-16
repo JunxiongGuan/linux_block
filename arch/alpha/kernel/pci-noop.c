@@ -138,24 +138,6 @@ static dma_addr_t alpha_noop_map_page(struct device *dev, struct page *page,
 	return page_to_pa(page) + offset;
 }
 
-static int alpha_noop_map_sg(struct device *dev, struct scatterlist *sgl, int nents,
-			     enum dma_data_direction dir, struct dma_attrs *attrs)
-{
-	int i;
-	struct scatterlist *sg;
-
-	for_each_sg(sgl, sg, nents, i) {
-		void *va;
-
-		BUG_ON(!sg_page(sg));
-		va = sg_virt(sg);
-		sg_dma_address(sg) = (dma_addr_t)virt_to_phys(va);
-		sg_dma_len(sg) = sg->length;
-	}
-
-	return nents;
-}
-
 static int alpha_noop_mapping_error(struct device *dev, dma_addr_t dma_addr)
 {
 	return 0;
@@ -170,7 +152,6 @@ struct dma_map_ops alpha_noop_ops = {
 	.alloc			= alpha_noop_alloc_coherent,
 	.free			= alpha_noop_free_coherent,
 	.map_page		= alpha_noop_map_page,
-	.map_sg			= alpha_noop_map_sg,
 	.mapping_error		= alpha_noop_mapping_error,
 	.dma_supported		= alpha_noop_supported,
 };

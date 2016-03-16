@@ -228,98 +228,6 @@ static void sn_dma_unmap_page(struct device *dev, dma_addr_t dma_addr,
 	provider->dma_unmap(pdev, dma_addr, dir);
 }
 
-/**
- * sn_dma_unmap_sg - unmap a DMA scatterlist
- * @dev: device to unmap
- * @sg: scatterlist to unmap
- * @nhwentries: number of scatterlist entries
- * @direction: DMA direction
- * @attrs: optional dma attributes
- *
- * Unmap a set of streaming mode DMA translations.
- */
-static void sn_dma_unmap_sg(struct device *dev, struct scatterlist *sgl,
-			    int nhwentries, enum dma_data_direction dir,
-			    struct dma_attrs *attrs)
-{
-	int i;
-	struct pci_dev *pdev = to_pci_dev(dev);
-	struct sn_pcibus_provider *provider = SN_PCIDEV_BUSPROVIDER(pdev);
-	struct scatterlist *sg;
-
-	BUG_ON(!dev_is_pci(dev));
-
-	for_each_sg(sgl, sg, nhwentries, i) {
-		provider->dma_unmap(pdev, sg->dma_address, dir);
-		sg->dma_address = (dma_addr_t) NULL;
-		sg->dma_length = 0;
-	}
-}
-
-/**
- * sn_dma_map_sg - map a scatterlist for DMA
- * @dev: device to map for
- * @sg: scatterlist to map
- * @nhwentries: number of entries
- * @direction: direction of the DMA transaction
- * @attrs: optional dma attributes
- *
- * mappings with the DMA_ATTR_WRITE_BARRIER get mapped with
- * dma_map_consistent() so that writes force a flush of pending DMA.
- * (See "SGI Altix Architecture Considerations for Linux Device Drivers",
- * Document Number: 007-4763-001)
- *
- * Maps each entry of @sg for DMA.
- */
-static int sn_dma_map_sg(struct device *dev, struct scatterlist *sgl,
-			 int nhwentries, enum dma_data_direction dir,
-			 struct dma_attrs *attrs)
-{
-	unsigned long phys_addr;
-	struct scatterlist *saved_sg = sgl, *sg;
-	struct pci_dev *pdev = to_pci_dev(dev);
-	struct sn_pcibus_provider *provider = SN_PCIDEV_BUSPROVIDER(pdev);
-	int i;
-	int dmabarr;
-
-	dmabarr = dma_get_attr(DMA_ATTR_WRITE_BARRIER, attrs);
-
-	BUG_ON(!dev_is_pci(dev));
-
-	/*
-	 * Setup a DMA address for each entry in the scatterlist.
-	 */
-	for_each_sg(sgl, sg, nhwentries, i) {
-		dma_addr_t dma_addr;
-		phys_addr = SG_ENT_PHYS_ADDRESS(sg);
-		if (dmabarr)
-			dma_addr = provider->dma_map_consistent(pdev,
-								phys_addr,
-								sg->length,
-								SN_DMA_ADDR_PHYS);
-		else
-			dma_addr = provider->dma_map(pdev, phys_addr,
-						     sg->length,
-						     SN_DMA_ADDR_PHYS);
-
-		sg->dma_address = dma_addr;
-		if (!sg->dma_address) {
-			printk(KERN_ERR "%s: out of ATEs\n", __func__);
-
-			/*
-			 * Free any successfully allocated entries.
-			 */
-			if (i > 0)
-				sn_dma_unmap_sg(dev, saved_sg, i, dir, attrs);
-			return 0;
-		}
-
-		sg->dma_length = sg->length;
-	}
-
-	return nhwentries;
-}
-
 static void sn_dma_sync_single_for_cpu(struct device *dev, dma_addr_t dma_handle,
 				       size_t size, enum dma_data_direction dir)
 {
@@ -329,18 +237,6 @@ static void sn_dma_sync_single_for_cpu(struct device *dev, dma_addr_t dma_handle
 static void sn_dma_sync_single_for_device(struct device *dev, dma_addr_t dma_handle,
 					  size_t size,
 					  enum dma_data_direction dir)
-{
-	BUG_ON(!dev_is_pci(dev));
-}
-
-static void sn_dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
-				   int nelems, enum dma_data_direction dir)
-{
-	BUG_ON(!dev_is_pci(dev));
-}
-
-static void sn_dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg,
-				      int nelems, enum dma_data_direction dir)
 {
 	BUG_ON(!dev_is_pci(dev));
 }
@@ -471,12 +367,8 @@ static struct dma_map_ops sn_dma_ops = {
 	.free			= sn_dma_free_coherent,
 	.map_page		= sn_dma_map_page,
 	.unmap_page		= sn_dma_unmap_page,
-	.map_sg			= sn_dma_map_sg,
-	.unmap_sg		= sn_dma_unmap_sg,
 	.sync_single_for_cpu 	= sn_dma_sync_single_for_cpu,
-	.sync_sg_for_cpu	= sn_dma_sync_sg_for_cpu,
 	.sync_single_for_device = sn_dma_sync_single_for_device,
-	.sync_sg_for_device	= sn_dma_sync_sg_for_device,
 	.mapping_error		= sn_dma_mapping_error,
 	.dma_supported		= sn_dma_supported,
 };

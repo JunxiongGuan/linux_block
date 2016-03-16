@@ -496,39 +496,6 @@ static void metag_dma_unmap_page(struct device *dev, dma_addr_t dma_address,
 	dma_sync_for_cpu(phys_to_virt(dma_address), size, direction);
 }
 
-static int metag_dma_map_sg(struct device *dev, struct scatterlist *sglist,
-		int nents, enum dma_data_direction direction,
-		struct dma_attrs *attrs)
-{
-	struct scatterlist *sg;
-	int i;
-
-	for_each_sg(sglist, sg, nents, i) {
-		BUG_ON(!sg_page(sg));
-
-		sg->dma_address = sg_phys(sg);
-		dma_sync_for_device(sg_virt(sg), sg->length, direction);
-	}
-
-	return nents;
-}
-
-
-static void metag_dma_unmap_sg(struct device *dev, struct scatterlist *sglist,
-		int nhwentries, enum dma_data_direction direction,
-		struct dma_attrs *attrs)
-{
-	struct scatterlist *sg;
-	int i;
-
-	for_each_sg(sglist, sg, nhwentries, i) {
-		BUG_ON(!sg_page(sg));
-
-		sg->dma_address = sg_phys(sg);
-		dma_sync_for_cpu(sg_virt(sg), sg->length, direction);
-	}
-}
-
 static void metag_dma_sync_single_for_cpu(struct device *dev,
 		dma_addr_t dma_handle, size_t size,
 		enum dma_data_direction direction)
@@ -543,36 +510,12 @@ static void metag_dma_sync_single_for_device(struct device *dev,
 	dma_sync_for_device(phys_to_virt(dma_handle), size, direction);
 }
 
-static void metag_dma_sync_sg_for_cpu(struct device *dev,
-		struct scatterlist *sglist, int nelems,
-		enum dma_data_direction direction)
-{
-	int i;
-	struct scatterlist *sg;
-
-	for_each_sg(sglist, sg, nelems, i)
-		dma_sync_for_cpu(sg_virt(sg), sg->length, direction);
-}
-
-static void metag_dma_sync_sg_for_device(struct device *dev,
-		struct scatterlist *sglist, int nelems,
-		enum dma_data_direction direction)
-{
-	int i;
-	struct scatterlist *sg;
-
-	for_each_sg(sglist, sg, nelems, i)
-		dma_sync_for_device(sg_virt(sg), sg->length, direction);
-}
-
 struct dma_map_ops metag_dma_ops = {
 	.alloc			= metag_dma_alloc,
 	.free			= metag_dma_free,
 	.map_page		= metag_dma_map_page,
-	.map_sg			= metag_dma_map_sg,
 	.sync_single_for_device	= metag_dma_sync_single_for_device,
 	.sync_single_for_cpu	= metag_dma_sync_single_for_cpu,
-	.sync_sg_for_cpu	= metag_dma_sync_sg_for_cpu,
 	.mmap			= metag_dma_mmap,
 };
 EXPORT_SYMBOL(metag_dma_ops);

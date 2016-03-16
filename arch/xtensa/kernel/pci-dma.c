@@ -109,32 +109,6 @@ static void xtensa_sync_single_for_device(struct device *dev,
 	}
 }
 
-static void xtensa_sync_sg_for_cpu(struct device *dev,
-				   struct scatterlist *sg, int nents,
-				   enum dma_data_direction dir)
-{
-	struct scatterlist *s;
-	int i;
-
-	for_each_sg(sg, s, nents, i) {
-		xtensa_sync_single_for_cpu(dev, sg_dma_address(s),
-					   sg_dma_len(s), dir);
-	}
-}
-
-static void xtensa_sync_sg_for_device(struct device *dev,
-				      struct scatterlist *sg, int nents,
-				      enum dma_data_direction dir)
-{
-	struct scatterlist *s;
-	int i;
-
-	for_each_sg(sg, s, nents, i) {
-		xtensa_sync_single_for_device(dev, sg_dma_address(s),
-					      sg_dma_len(s), dir);
-	}
-}
-
 /*
  * Note: We assume that the full memory space is always mapped to 'kseg'
  *	 Otherwise we have to use page attributes (not implemented).
@@ -200,34 +174,6 @@ static void xtensa_unmap_page(struct device *dev, dma_addr_t dma_handle,
 	xtensa_sync_single_for_cpu(dev, dma_handle, size, dir);
 }
 
-static int xtensa_map_sg(struct device *dev, struct scatterlist *sg,
-			 int nents, enum dma_data_direction dir,
-			 struct dma_attrs *attrs)
-{
-	struct scatterlist *s;
-	int i;
-
-	for_each_sg(sg, s, nents, i) {
-		s->dma_address = xtensa_map_page(dev, sg_page(s), s->offset,
-						 s->length, dir, attrs);
-	}
-	return nents;
-}
-
-static void xtensa_unmap_sg(struct device *dev,
-			    struct scatterlist *sg, int nents,
-			    enum dma_data_direction dir,
-			    struct dma_attrs *attrs)
-{
-	struct scatterlist *s;
-	int i;
-
-	for_each_sg(sg, s, nents, i) {
-		xtensa_unmap_page(dev, sg_dma_address(s),
-				  sg_dma_len(s), dir, attrs);
-	}
-}
-
 int xtensa_dma_mapping_error(struct device *dev, dma_addr_t dma_addr)
 {
 	return 0;
@@ -236,14 +182,8 @@ int xtensa_dma_mapping_error(struct device *dev, dma_addr_t dma_addr)
 struct dma_map_ops xtensa_dma_map_ops = {
 	.alloc = xtensa_dma_alloc,
 	.free = xtensa_dma_free,
-	.map_page = xtensa_map_page,
-	.unmap_page = xtensa_unmap_page,
-	.map_sg = xtensa_map_sg,
-	.unmap_sg = xtensa_unmap_sg,
 	.sync_single_for_cpu = xtensa_sync_single_for_cpu,
 	.sync_single_for_device = xtensa_sync_single_for_device,
-	.sync_sg_for_cpu = xtensa_sync_sg_for_cpu,
-	.sync_sg_for_device = xtensa_sync_sg_for_device,
 	.mapping_error = xtensa_dma_mapping_error,
 };
 EXPORT_SYMBOL(xtensa_dma_map_ops);

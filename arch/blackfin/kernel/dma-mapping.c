@@ -109,21 +109,6 @@ void __dma_sync(dma_addr_t addr, size_t size,
 }
 EXPORT_SYMBOL(__dma_sync);
 
-static int bfin_dma_map_sg(struct device *dev, struct scatterlist *sg_list,
-		int nents, enum dma_data_direction direction,
-		struct dma_attrs *attrs)
-{
-	struct scatterlist *sg;
-	int i;
-
-	for_each_sg(sg_list, sg, nents, i) {
-		sg->dma_address = (dma_addr_t) sg_virt(sg);
-		__dma_sync(sg_dma_address(sg), sg_dma_len(sg), direction);
-	}
-
-	return nents;
-}
-
 static void bfin_dma_sync_sg_for_device(struct device *dev,
 		struct scatterlist *sg_list, int nelems,
 		enum dma_data_direction direction)
@@ -158,7 +143,6 @@ struct dma_map_ops bfin_dma_ops = {
 	.free			= bfin_dma_free,
 
 	.map_page		= bfin_dma_map_page,
-	.map_sg			= bfin_dma_map_sg,
 
 	.sync_single_for_device	= bfin_dma_sync_single_for_device,
 	.sync_sg_for_device	= bfin_dma_sync_sg_for_device,

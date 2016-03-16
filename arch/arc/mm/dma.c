@@ -111,19 +111,6 @@ static dma_addr_t arc_dma_map_page(struct device *dev, struct page *page,
 	return (dma_addr_t)paddr;
 }
 
-static int arc_dma_map_sg(struct device *dev, struct scatterlist *sg,
-	   int nents, enum dma_data_direction dir, struct dma_attrs *attrs)
-{
-	struct scatterlist *s;
-	int i;
-
-	for_each_sg(sg, s, nents, i)
-		s->dma_address = dma_map_page(dev, sg_page(s), s->offset,
-					       s->length, dir);
-
-	return nents;
-}
-
 static void arc_dma_sync_single_for_cpu(struct device *dev,
 		dma_addr_t dma_handle, size_t size, enum dma_data_direction dir)
 {
@@ -168,7 +155,6 @@ struct dma_map_ops arc_dma_ops = {
 	.alloc			= arc_dma_alloc,
 	.free			= arc_dma_free,
 	.map_page		= arc_dma_map_page,
-	.map_sg			= arc_dma_map_sg,
 	.sync_single_for_device	= arc_dma_sync_single_for_device,
 	.sync_single_for_cpu	= arc_dma_sync_single_for_cpu,
 	.sync_sg_for_cpu	= arc_dma_sync_sg_for_cpu,

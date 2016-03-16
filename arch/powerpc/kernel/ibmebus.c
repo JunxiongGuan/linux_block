@@ -93,39 +93,6 @@ static dma_addr_t ibmebus_map_page(struct device *dev,
 	return (dma_addr_t)(page_address(page) + offset);
 }
 
-static void ibmebus_unmap_page(struct device *dev,
-			       dma_addr_t dma_addr,
-			       size_t size,
-			       enum dma_data_direction direction,
-			       struct dma_attrs *attrs)
-{
-	return;
-}
-
-static int ibmebus_map_sg(struct device *dev,
-			  struct scatterlist *sgl,
-			  int nents, enum dma_data_direction direction,
-			  struct dma_attrs *attrs)
-{
-	struct scatterlist *sg;
-	int i;
-
-	for_each_sg(sgl, sg, nents, i) {
-		sg->dma_address = (dma_addr_t) sg_virt(sg);
-		sg->dma_length = sg->length;
-	}
-
-	return nents;
-}
-
-static void ibmebus_unmap_sg(struct device *dev,
-			     struct scatterlist *sg,
-			     int nents, enum dma_data_direction direction,
-			     struct dma_attrs *attrs)
-{
-	return;
-}
-
 static int ibmebus_dma_supported(struct device *dev, u64 mask)
 {
 	return mask == DMA_BIT_MASK(64);
@@ -139,12 +106,9 @@ static u64 ibmebus_dma_get_required_mask(struct device *dev)
 static struct dma_map_ops ibmebus_dma_ops = {
 	.alloc              = ibmebus_alloc_coherent,
 	.free               = ibmebus_free_coherent,
-	.map_sg             = ibmebus_map_sg,
-	.unmap_sg           = ibmebus_unmap_sg,
 	.dma_supported      = ibmebus_dma_supported,
 	.get_required_mask  = ibmebus_dma_get_required_mask,
 	.map_page           = ibmebus_map_page,
-	.unmap_page         = ibmebus_unmap_page,
 };
 
 static int ibmebus_match_path(struct device *dev, void *data)

@@ -482,44 +482,6 @@ static void pa11_dma_unmap_page(struct device *dev, dma_addr_t dma_handle,
 	return;
 }
 
-static int pa11_dma_map_sg(struct device *dev, struct scatterlist *sglist,
-		int nents, enum dma_data_direction direction,
-		struct dma_attrs *attrs)
-{
-	int i;
-	struct scatterlist *sg;
-
-	BUG_ON(direction == DMA_NONE);
-
-	for_each_sg(sglist, sg, nents, i) {
-		unsigned long vaddr = (unsigned long)sg_virt(sg);
-
-		sg_dma_address(sg) = (dma_addr_t) virt_to_phys(vaddr);
-		sg_dma_len(sg) = sg->length;
-		flush_kernel_dcache_range(vaddr, sg->length);
-	}
-	return nents;
-}
-
-static void pa11_dma_unmap_sg(struct device *dev, struct scatterlist *sglist,
-		int nents, enum dma_data_direction direction,
-		struct dma_attrs *attrs)
-{
-	int i;
-	struct scatterlist *sg;
-
-	BUG_ON(direction == DMA_NONE);
-
-	if (direction == DMA_TO_DEVICE)
-	    return;
-
-	/* once we do combining we'll need to use phys_to_virt(sg_dma_address(sglist)) */
-
-	for_each_sg(sglist, sg, nents, i)
-		flush_kernel_vmap_range(sg_virt(sg), sg->length);
-	return;
-}
-
 static void pa11_dma_sync_single_for_cpu(struct device *dev,
 		dma_addr_t dma_handle, size_t size,
 		enum dma_data_direction direction)
@@ -568,8 +530,6 @@ struct dma_map_ops pcxl_dma_ops = {
 	.free =			pa11_dma_free,
 	.map_page =		pa11_dma_map_page,
 	.unmap_page =		pa11_dma_unmap_page,
-	.map_sg =		pa11_dma_map_sg,
-	.unmap_sg =		pa11_dma_unmap_sg,
 	.sync_single_for_cpu =	pa11_dma_sync_single_for_cpu,
 	.sync_single_for_device = pa11_dma_sync_single_for_device,
 	.sync_sg_for_cpu =	pa11_dma_sync_sg_for_cpu,
@@ -604,8 +564,6 @@ struct dma_map_ops pcx_dma_ops = {
 	.free =			pcx_dma_free,
 	.map_page =		pa11_dma_map_page,
 	.unmap_page =		pa11_dma_unmap_page,
-	.map_sg =		pa11_dma_map_sg,
-	.unmap_sg =		pa11_dma_unmap_sg,
 	.sync_single_for_cpu =	pa11_dma_sync_single_for_cpu,
 	.sync_single_for_device = pa11_dma_sync_single_for_device,
 	.sync_sg_for_cpu =	pa11_dma_sync_sg_for_cpu,

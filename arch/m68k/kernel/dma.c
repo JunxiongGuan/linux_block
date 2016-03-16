@@ -116,18 +116,6 @@ static void m68k_dma_sync_single_for_device(struct device *dev,
 	}
 }
 
-static void m68k_dma_sync_sg_for_device(struct device *dev,
-		struct scatterlist *sglist, int nents, enum dma_data_direction dir)
-{
-	int i;
-	struct scatterlist *sg;
-
-	for_each_sg(sglist, sg, nents, i) {
-		dma_sync_single_for_device(dev, sg->dma_address, sg->length,
-					   dir);
-	}
-}
-
 static dma_addr_t m68k_dma_map_page(struct device *dev, struct page *page,
 		unsigned long offset, size_t size, enum dma_data_direction dir,
 		struct dma_attrs *attrs)
@@ -138,26 +126,10 @@ static dma_addr_t m68k_dma_map_page(struct device *dev, struct page *page,
 	return handle;
 }
 
-static int m68k_dma_map_sg(struct device *dev, struct scatterlist *sglist,
-		int nents, enum dma_data_direction dir, struct dma_attrs *attrs)
-{
-	int i;
-	struct scatterlist *sg;
-
-	for_each_sg(sglist, sg, nents, i) {
-		sg->dma_address = sg_phys(sg);
-		dma_sync_single_for_device(dev, sg->dma_address, sg->length,
-					   dir);
-	}
-	return nents;
-}
-
 struct dma_map_ops m68k_dma_ops = {
 	.alloc			= m68k_dma_alloc,
 	.free			= m68k_dma_free,
 	.map_page		= m68k_dma_map_page,
-	.map_sg			= m68k_dma_map_sg,
 	.sync_single_for_device	= m68k_dma_sync_single_for_device,
-	.sync_sg_for_device	= m68k_dma_sync_sg_for_device,
 };
 EXPORT_SYMBOL(m68k_dma_ops);

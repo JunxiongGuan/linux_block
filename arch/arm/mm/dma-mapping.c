@@ -135,12 +135,8 @@ struct dma_map_ops arm_dma_ops = {
 	.get_sgtable		= arm_dma_get_sgtable,
 	.map_page		= arm_dma_map_page,
 	.unmap_page		= arm_dma_unmap_page,
-	.map_sg			= arm_dma_map_sg,
-	.unmap_sg		= arm_dma_unmap_sg,
 	.sync_single_for_cpu	= arm_dma_sync_single_for_cpu,
 	.sync_single_for_device	= arm_dma_sync_single_for_device,
-	.sync_sg_for_cpu	= arm_dma_sync_sg_for_cpu,
-	.sync_sg_for_device	= arm_dma_sync_sg_for_device,
 	.set_dma_mask		= arm_dma_set_mask,
 };
 EXPORT_SYMBOL(arm_dma_ops);
@@ -159,7 +155,6 @@ struct dma_map_ops arm_coherent_dma_ops = {
 	.mmap			= arm_coherent_dma_mmap,
 	.get_sgtable		= arm_dma_get_sgtable,
 	.map_page		= arm_coherent_dma_map_page,
-	.map_sg			= arm_dma_map_sg,
 	.set_dma_mask		= arm_dma_set_mask,
 };
 EXPORT_SYMBOL(arm_coherent_dma_ops);
@@ -890,106 +885,6 @@ static void __dma_page_dev_to_cpu(struct page *page, unsigned long off,
 			left -= PAGE_SIZE;
 		}
 	}
-}
-
-/**
- * arm_dma_map_sg - map a set of SG buffers for streaming mode DMA
- * @dev: valid struct device pointer, or NULL for ISA and EISA-like devices
- * @sg: list of buffers
- * @nents: number of buffers to map
- * @dir: DMA transfer direction
- *
- * Map a set of buffers described by scatterlist in streaming mode for DMA.
- * This is the scatter-gather version of the dma_map_single interface.
- * Here the scatter gather list elements are each tagged with the
- * appropriate dma address and length.  They are obtained via
- * sg_dma_{address,length}.
- *
- * Device ownership issues as mentioned for dma_map_single are the same
- * here.
- */
-int arm_dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
-		enum dma_data_direction dir, struct dma_attrs *attrs)
-{
-	struct dma_map_ops *ops = get_dma_ops(dev);
-	struct scatterlist *s;
-	int i, j;
-
-	for_each_sg(sg, s, nents, i) {
-#ifdef CONFIG_NEED_SG_DMA_LENGTH
-		s->dma_length = s->length;
-#endif
-		s->dma_address = ops->map_page(dev, sg_page(s), s->offset,
-						s->length, dir, attrs);
-		if (dma_mapping_error(dev, s->dma_address))
-			goto bad_mapping;
-	}
-	return nents;
-
- bad_mapping:
-	for_each_sg(sg, s, i, j)
-		ops->unmap_page(dev, sg_dma_address(s), sg_dma_len(s), dir, attrs);
-	return 0;
-}
-
-/**
- * arm_dma_unmap_sg - unmap a set of SG buffers mapped by dma_map_sg
- * @dev: valid struct device pointer, or NULL for ISA and EISA-like devices
- * @sg: list of buffers
- * @nents: number of buffers to unmap (same as was passed to dma_map_sg)
- * @dir: DMA transfer direction (same as was passed to dma_map_sg)
- *
- * Unmap a set of streaming mode DMA translations.  Again, CPU access
- * rules concerning calls here are the same as for dma_unmap_single().
- */
-void arm_dma_unmap_sg(struct device *dev, struct scatterlist *sg, int nents,
-		enum dma_data_direction dir, struct dma_attrs *attrs)
-{
-	struct dma_map_ops *ops = get_dma_ops(dev);
-	struct scatterlist *s;
-
-	int i;
-
-	for_each_sg(sg, s, nents, i)
-		ops->unmap_page(dev, sg_dma_address(s), sg_dma_len(s), dir, attrs);
-}
-
-/**
- * arm_dma_sync_sg_for_cpu
- * @dev: valid struct device pointer, or NULL for ISA and EISA-like devices
- * @sg: list of buffers
- * @nents: number of buffers to map (returned from dma_map_sg)
- * @dir: DMA transfer direction (same as was passed to dma_map_sg)
- */
-void arm_dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
-			int nents, enum dma_data_direction dir)
-{
-	struct dma_map_ops *ops = get_dma_ops(dev);
-	struct scatterlist *s;
-	int i;
-
-	for_each_sg(sg, s, nents, i)
-		ops->sync_single_for_cpu(dev, sg_dma_address(s), s->length,
-					 dir);
-}
-
-/**
- * arm_dma_sync_sg_for_device
- * @dev: valid struct device pointer, or NULL for ISA and EISA-like devices
- * @sg: list of buffers
- * @nents: number of buffers to map (returned from dma_map_sg)
- * @dir: DMA transfer direction (same as was passed to dma_map_sg)
- */
-void arm_dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg,
-			int nents, enum dma_data_direction dir)
-{
-	struct dma_map_ops *ops = get_dma_ops(dev);
-	struct scatterlist *s;
-	int i;
-
-	for_each_sg(sg, s, nents, i)
-		ops->sync_single_for_device(dev, sg_dma_address(s), s->length,
-					    dir);
 }
 
 /*
