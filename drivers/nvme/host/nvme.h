@@ -155,6 +155,7 @@ struct nvme_ctrl_ops {
 	void (*submit_async_event)(struct nvme_ctrl *ctrl, int aer_idx);
 	int (*delete_ctrl)(struct nvme_ctrl *ctrl);
 	const char *(*get_subsysnqn)(struct nvme_ctrl *ctrl);
+	int (*get_address)(struct nvme_ctrl *ctrl, char *buf, int size);
 };
 
 static inline bool nvme_ctrl_ready(struct nvme_ctrl *ctrl)
