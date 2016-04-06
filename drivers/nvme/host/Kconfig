@@ -27,3 +27,10 @@ config BLK_DEV_NVME_SCSI
 
 config NVME_FABRICS
 	tristate
+
+config NVME_RDMA
+	tristate "NVM Express over Fabrics RDMA host driver"
+	depends on INFINIBAND
+	depends on BLK_DEV_NVME
+	select NVME_FABRICS
+	select SG_POOL
