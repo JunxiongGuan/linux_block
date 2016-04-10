@@ -225,6 +225,29 @@ nvmf_remote_cmd()
 
 }
 
+nvmf_run_fio_bg()
+{
+    bs=${1:-"4k"}
+    pattern=${2:-"randread"}
+    th=${3:-"1"}
+    iod=${4:-"32"}
+    time=${5:-"30"}
+    devs=${*:6}
+
+    fio_cmd="fio --group_reporting --rw=$pattern --bs=$bs --numjobs=$th --iodepth=$iod --runtime=$time
+    --time_based --loops=1 --ioengine=libaio  --direct=1 --invalidate=1 --randrepeat=1 --norandommap
+    --exitall --size=100M"
+
+    i=0
+    for dev in $devs
+    do
+        fio_cmd="$fio_cmd --name task_$i --filename=$dev"
+	let "i+=1"
+    done
+
+    $fio_cmd > /dev/null 2>&1 &
+}
+
 nvmf_run_dd()
 {
     DEV=$1
