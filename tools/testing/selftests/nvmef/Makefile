@@ -6,6 +6,8 @@ TEST_PROGS += 002.sh
 TEST_PROGS += 003.sh
 TEST_PROGS += 004.sh
 TEST_PROGS += 005.sh
+TEST_PROGS += 006.sh
+TEST_PROGS += 007.sh
 
 include ../lib.mk
 
