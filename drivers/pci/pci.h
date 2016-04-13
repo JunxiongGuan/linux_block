@@ -144,8 +144,13 @@ extern unsigned int pci_pm_d3_delay;
 
 #ifdef CONFIG_PCI_MSI
 void pci_no_msi(void);
+int pci_msi_supported(struct pci_dev *dev, int nvec);
 #else
 static inline void pci_no_msi(void) { }
+static int pci_msi_supported(struct pci_dev *dev, int nvec)
+{
+	return 0;
+}
 #endif
 
 static inline void pci_msi_set_enable(struct pci_dev *dev, int enable)

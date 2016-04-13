@@ -815,7 +815,7 @@ out_free:
  * to determine if MSI/-X are supported for the device. If MSI/-X is
  * supported return 1, else return 0.
  **/
-static int pci_msi_supported(struct pci_dev *dev, int nvec)
+int pci_msi_supported(struct pci_dev *dev, int nvec)
 {
 	struct pci_bus *bus;
 
