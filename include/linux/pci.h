@@ -320,6 +320,7 @@ struct pci_dev {
 	 * directly, use the values stored here. They might be different!
 	 */
 	unsigned int	irq;
+	struct msix_entry *msix_vectors;
 	struct resource resource[DEVICE_COUNT_RESOURCE]; /* I/O and memory regions + expansion ROMs */
 
 	bool match_driver;		/* Skip attaching driver */
@@ -1237,6 +1238,9 @@ resource_size_t pcibios_iov_resource_alignment(struct pci_dev *dev, int resno);
 int pci_set_vga_state(struct pci_dev *pdev, bool decode,
 		      unsigned int command_bits, u32 flags);
 
+#define PCI_IRQ_NOMSI		(1 << 0) /* don't try to use MSI interrupts */
+#define PCI_IRQ_NOMSIX		(1 << 1) /* don't try to use MSI-X interrupts */
+
 /* kmem_cache style wrapper around pci_alloc_consistent() */
 
 #include <linux/pci-dma.h>
@@ -1284,6 +1288,24 @@ static inline int pci_enable_msix_exact(struct pci_dev *dev,
 		return rc;
 	return 0;
 }
+int pci_alloc_irq_vectors(struct pci_dev *dev, unsigned int min_vecs,
+		unsigned int max_vecs, unsigned int flags);
+void pci_free_irq_vectors(struct pci_dev *dev);
+
+
+/**
+ * pci_irq_vector - return Linux IRQ number of a device vector
+ * @dev: PCI device to operate on
+ * @nr: device-relative interrupt vector index (0-based).
+ */
+static inline unsigned int pci_irq_vector(struct pci_dev *dev, unsigned int nr)
+{
+	if (dev->msix_enabled)
+		return dev->msix_vectors[nr].vector;
+
+	WARN_ON_ONCE(!dev->msi_enabled && nr > 0);
+	return dev->irq + nr;
+}
 #else
 static inline int pci_msi_vec_count(struct pci_dev *dev) { return -ENOSYS; }
 static inline void pci_msi_shutdown(struct pci_dev *dev) { }
@@ -1307,6 +1329,23 @@ static inline int pci_enable_msix_range(struct pci_dev *dev,
 static inline int pci_enable_msix_exact(struct pci_dev *dev,
 		      struct msix_entry *entries, int nvec)
 { return -ENOSYS; }
+static inline int pci_alloc_irq_vectors(struct pci_dev *dev,
+		unsigned int min_vecs, unsigned int max_vecs,
+		unsigned int flags)
+{
+	if (min_vecs > 1)
+		return -ENOSPC;
+	return 1;
+}
+static inline void pci_free_irq_vectors(struct pci_dev *dev)
+{
+}
+
+static inline unsigned int pci_irq_vector(struct pci_dev *dev, unsigned int nr)
+{
+	WARN_ON_ONCE(nr > 0);
+	return dev->irq;
+}
 #endif
 
 #ifdef CONFIG_PCIEPORTBUS
