@@ -68,9 +68,17 @@ static int alloc_masks(struct irq_desc *desc, gfp_t gfp, int node)
 	return 0;
 }
 
-static void desc_smp_init(struct irq_desc *desc, int node)
+static void desc_smp_init(struct irq_desc *desc, int node, int targetcpu)
 {
-	cpumask_copy(desc->irq_common_data.affinity, irq_default_affinity);
+	if (targetcpu < 0) {
+		cpumask_copy(desc->irq_common_data.affinity,
+			     irq_default_affinity);
+	} else {
+		cpumask_copy(desc->irq_common_data.affinity,
+			     cpumask_of(targetcpu));
+		irq_settings_set_no_balancing(desc);
+		irqd_set(&desc->irq_data, IRQD_NO_BALANCING);
+	}
 #ifdef CONFIG_GENERIC_PENDING_IRQ
 	cpumask_clear(desc->pending_mask);
 #endif
@@ -82,11 +90,11 @@ static void desc_smp_init(struct irq_desc *desc, int node)
 #else
 static inline int
 alloc_masks(struct irq_desc *desc, gfp_t gfp, int node) { return 0; }
-static inline void desc_smp_init(struct irq_desc *desc, int node) { }
+static inline void desc_smp_init(struct irq_desc *desc, int cpu, int node) { }
 #endif
 
-static void desc_set_defaults(unsigned int irq, struct irq_desc *desc, int node,
-		struct module *owner)
+static void desc_set_defaults(unsigned int irq, struct irq_desc *desc,
+			      int node, struct module *owner, int targetcpu)
 {
 	int cpu;
 
@@ -107,7 +115,7 @@ static void desc_set_defaults(unsigned int irq, struct irq_desc *desc, int node,
 	desc->owner = owner;
 	for_each_possible_cpu(cpu)
 		*per_cpu_ptr(desc->kstat_irqs, cpu) = 0;
-	desc_smp_init(desc, node);
+	desc_smp_init(desc, node, targetcpu);
 }
 
 int nr_irqs = NR_IRQS;
@@ -158,7 +166,8 @@ void irq_unlock_sparse(void)
 	mutex_unlock(&sparse_irq_lock);
 }
 
-static struct irq_desc *alloc_desc(int irq, int node, struct module *owner)
+static struct irq_desc *alloc_desc(int irq, int node, struct module *owner,
+		int targetcpu)
 {
 	struct irq_desc *desc;
 	gfp_t gfp = GFP_KERNEL;
@@ -178,7 +187,7 @@ static struct irq_desc *alloc_desc(int irq, int node, struct module *owner)
 	lockdep_set_class(&desc->lock, &irq_desc_lock_class);
 	init_rcu_head(&desc->rcu);
 
-	desc_set_defaults(irq, desc, node, owner);
+	desc_set_defaults(irq, desc, node, owner, targetcpu);
 
 	return desc;
 
@@ -223,13 +232,16 @@ static void free_desc(unsigned int irq)
 }
 
 static int alloc_descs(unsigned int start, unsigned int cnt, int node,
-		       struct module *owner)
+		       struct module *owner, int targetcpu)
 {
 	struct irq_desc *desc;
 	int i;
 
+	if (targetcpu != -1)
+		node = cpu_to_node(targetcpu);
+
 	for (i = 0; i < cnt; i++) {
-		desc = alloc_desc(start + i, node, owner);
+		desc = alloc_desc(start + i, node, owner, targetcpu);
 		if (!desc)
 			goto err;
 		mutex_lock(&sparse_irq_lock);
@@ -277,7 +289,7 @@ int __init early_irq_init(void)
 		nr_irqs = initcnt;
 
 	for (i = 0; i < initcnt; i++) {
-		desc = alloc_desc(i, node, NULL);
+		desc = alloc_desc(i, node, NULL, -1);
 		set_bit(i, allocated_irqs);
 		irq_insert_desc(i, desc);
 	}
@@ -311,7 +323,7 @@ int __init early_irq_init(void)
 		alloc_masks(&desc[i], GFP_KERNEL, node);
 		raw_spin_lock_init(&desc[i].lock);
 		lockdep_set_class(&desc[i].lock, &irq_desc_lock_class);
-		desc_set_defaults(i, &desc[i], node, NULL);
+		desc_set_defaults(i, &desc[i], node, NULL, -1);
 	}
 	return arch_early_irq_init();
 }
@@ -328,12 +340,12 @@ static void free_desc(unsigned int irq)
 	unsigned long flags;
 
 	raw_spin_lock_irqsave(&desc->lock, flags);
-	desc_set_defaults(irq, desc, irq_desc_get_node(desc), NULL);
+	desc_set_defaults(irq, desc, -1, irq_desc_get_node(desc), NULL, -1);
 	raw_spin_unlock_irqrestore(&desc->lock, flags);
 }
 
 static inline int alloc_descs(unsigned int start, unsigned int cnt, int node,
-			      struct module *owner)
+			      struct module *owner, int targetcpu)
 {
 	u32 i;
 
@@ -453,12 +465,14 @@ EXPORT_SYMBOL_GPL(irq_free_descs);
  * @cnt:	Number of consecutive irqs to allocate.
  * @node:	Preferred node on which the irq descriptor should be allocated
  * @owner:	Owning module (can be NULL)
+ * @targetcpu:	CPU number where the irq descriptors should be allocated and
+ *		which should be used for the default affinity.  -1 if not used.
  *
  * Returns the first irq number or error code
  */
 int __ref
 __irq_alloc_descs(int irq, unsigned int from, unsigned int cnt, int node,
-		  struct module *owner)
+		  struct module *owner, int targetcpu)
 {
 	int start, ret;
 
@@ -494,7 +508,7 @@ __irq_alloc_descs(int irq, unsigned int from, unsigned int cnt, int node,
 
 	bitmap_set(allocated_irqs, start, cnt);
 	mutex_unlock(&sparse_irq_lock);
-	return alloc_descs(start, cnt, node, owner);
+	return alloc_descs(start, cnt, node, owner, targetcpu);
 
 err:
 	mutex_unlock(&sparse_irq_lock);
@@ -512,7 +526,7 @@ EXPORT_SYMBOL_GPL(__irq_alloc_descs);
  */
 unsigned int irq_alloc_hwirqs(int cnt, int node)
 {
-	int i, irq = __irq_alloc_descs(-1, 0, cnt, node, NULL);
+	int i, irq = __irq_alloc_descs(-1, 0, cnt, node, NULL, -1);
 
 	if (irq < 0)
 		return 0;

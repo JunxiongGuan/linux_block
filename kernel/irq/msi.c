@@ -324,7 +324,7 @@ int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
 	struct msi_domain_ops *ops = info->ops;
 	msi_alloc_info_t arg;
 	struct msi_desc *desc;
-	int i, ret, virq = -1;
+	int i, ret, virq = -1, cpu = -1;
 
 	ret = msi_domain_prepare_irqs(domain, dev, nvec, &arg);
 	if (ret)
@@ -337,8 +337,15 @@ int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
 		else
 			virq = -1;
 
+		if (dev->irq_affinity) {
+			cpu = cpumask_next(cpu, dev->irq_affinity);
+			if (cpu > nr_cpu_ids)
+				cpu = cpumask_first(dev->irq_affinity);
+		}
+
 		virq = __irq_domain_alloc_irqs(domain, virq, desc->nvec_used,
-					       dev_to_node(dev), &arg, false);
+					       dev_to_node(dev), &arg, false,
+					       cpu);
 		if (virq < 0) {
 			ret = -ENOSPC;
 			if (ops->handle_error)

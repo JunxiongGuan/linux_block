@@ -215,7 +215,8 @@ extern struct irq_domain *irq_find_matching_fwnode(struct fwnode_handle *fwnode,
 						   enum irq_domain_bus_token bus_token);
 extern void irq_set_default_host(struct irq_domain *host);
 extern int irq_domain_alloc_descs(int virq, unsigned int nr_irqs,
-				  irq_hw_number_t hwirq, int node);
+				  irq_hw_number_t hwirq, int node,
+				  int targetcpu);
 
 static inline struct fwnode_handle *of_node_to_fwnode(struct device_node *node)
 {
@@ -377,7 +378,7 @@ static inline struct irq_domain *irq_domain_add_hierarchy(struct irq_domain *par
 
 extern int __irq_domain_alloc_irqs(struct irq_domain *domain, int irq_base,
 				   unsigned int nr_irqs, int node, void *arg,
-				   bool realloc);
+				   bool realloc, int targetcpu);
 extern void irq_domain_free_irqs(unsigned int virq, unsigned int nr_irqs);
 extern void irq_domain_activate_irq(struct irq_data *irq_data);
 extern void irq_domain_deactivate_irq(struct irq_data *irq_data);
@@ -385,7 +386,8 @@ extern void irq_domain_deactivate_irq(struct irq_data *irq_data);
 static inline int irq_domain_alloc_irqs(struct irq_domain *domain,
 			unsigned int nr_irqs, int node, void *arg)
 {
-	return __irq_domain_alloc_irqs(domain, -1, nr_irqs, node, arg, false);
+	return __irq_domain_alloc_irqs(domain, -1, nr_irqs, node, arg, false,
+				       -1);
 }
 
 extern int irq_domain_alloc_irqs_recursive(struct irq_domain *domain,
