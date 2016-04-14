@@ -74,6 +74,7 @@ struct blk_mq_tag_set {
 	unsigned int		timeout;
 	unsigned int		flags;		/* BLK_MQ_F_* */
 	void			*driver_data;
+	struct cpumask		*affinity_mask;
 
 	struct blk_mq_tags	**tags;
 

@@ -22,6 +22,7 @@
 #include <linux/sched/sysctl.h>
 #include <linux/delay.h>
 #include <linux/crash_dump.h>
+#include <linux/interrupt.h>
 
 #include <trace/events/block.h>
 
@@ -1954,6 +1955,22 @@ struct request_queue *blk_mq_init_queue(struct blk_mq_tag_set *set)
 }
 EXPORT_SYMBOL(blk_mq_init_queue);
 
+/*
+ * We have no quick way of doing reverse lookups. This is only used at
+ * queue init time, so runtime isn't important.
+ */
+static int blk_mq_hw_queue_to_node(unsigned int *mq_map, unsigned int index)
+{
+	int i;
+
+	for_each_possible_cpu(i) {
+		if (index == mq_map[i])
+			return local_memory_node(cpu_to_node(i));
+	}
+
+	return NUMA_NO_NODE;
+}
+
 static void blk_mq_realloc_hw_ctxs(struct blk_mq_tag_set *set,
 						struct request_queue *q)
 {
@@ -2013,6 +2030,30 @@ static void blk_mq_realloc_hw_ctxs(struct blk_mq_tag_set *set,
 	blk_mq_sysfs_register(q);
 }
 
+static unsigned int *
+affinity_mask_to_queue_map(const struct cpumask *affinity_mask, int node)
+{
+	unsigned int *map;
+	int queue = -1, cpu = 0;
+
+	map = kzalloc_node(sizeof(*map) * nr_cpu_ids, GFP_KERNEL, node);
+	if (!map)
+		return NULL;
+
+	if (!affinity_mask)
+		return map;	/* map all cpus to queue 0 */
+
+	/* If cpus are offline, map them to first hctx */
+	for_each_online_cpu(cpu) {
+		if (cpumask_test_cpu(cpu, affinity_mask))
+			queue++;
+		if (queue > 0)
+			map[cpu] = queue;
+	}
+
+	return map;
+}
+
 struct request_queue *blk_mq_init_allocated_queue(struct blk_mq_tag_set *set,
 						  struct request_queue *q)
 {
@@ -2028,7 +2069,21 @@ struct request_queue *blk_mq_init_allocated_queue(struct blk_mq_tag_set *set,
 	if (!q->queue_hw_ctx)
 		goto err_percpu;
 
-	q->mq_map = blk_mq_make_queue_map(set);
+	if (set->affinity_mask) {
+		q->mq_map = affinity_mask_to_queue_map(set->affinity_mask,
+				set->numa_node);
+	} else {
+		struct cpumask *affinity_mask;
+		int ret;
+
+		ret = irq_create_affinity_mask(&affinity_mask, set->nr_hw_queues);
+		if (ret)
+			goto err_map;
+
+		q->mq_map = affinity_mask_to_queue_map(affinity_mask, set->numa_node);
+		kfree(affinity_mask);
+	}
+
 	if (!q->mq_map)
 		goto err_map;
 
@@ -2111,7 +2166,8 @@ static void blk_mq_queue_reinit(struct request_queue *q,
 
 	blk_mq_sysfs_unregister(q);
 
-	blk_mq_update_queue_map(q->mq_map, q->nr_hw_queues, online_mask);
+//	XXX: figure out what to do about cpu hotplug in the new world order
+//	blk_mq_update_queue_map(q->mq_map, q->nr_hw_queues, online_mask);
 
 	/*
 	 * redo blk_mq_init_cpu_queues and blk_mq_init_hw_queues. FIXME: maybe
