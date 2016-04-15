@@ -240,6 +240,20 @@ int __irq_set_affinity(unsigned int irq, const struct cpumask *mask, bool force)
 	return ret;
 }
 
+void irq_program_affinity(unsigned int irq)
+{
+	struct irq_desc *desc = irq_to_desc(irq);
+	struct irq_data *data = irq_desc_get_irq_data(desc);
+	unsigned long flags;
+
+	if (WARN_ON_ONCE(!desc))
+		return;
+
+	raw_spin_lock_irqsave(&desc->lock, flags);
+	irq_set_affinity_locked(data, desc->irq_common_data.affinity, false);
+	raw_spin_unlock_irqrestore(&desc->lock, flags);
+}
+
 int irq_set_affinity_hint(unsigned int irq, const struct cpumask *m)
 {
 	unsigned long flags;

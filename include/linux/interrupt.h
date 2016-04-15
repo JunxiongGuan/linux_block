@@ -713,4 +713,6 @@ extern char __softirqentry_text_end[];
 #define __softirq_entry
 #endif
 
+void irq_program_affinity(unsigned int irq);
+
 #endif
