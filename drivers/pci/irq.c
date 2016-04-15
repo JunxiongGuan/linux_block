@@ -55,9 +55,14 @@ int pci_alloc_irq_vectors(struct pci_dev *pdev, int nr_vecs)
 
 	nr_vecs = min(nr_vecs, pci_nr_irq_vectors(pdev));
 
+	ret = irq_create_affinity_mask(&pdev->dev.irq_affinity, nr_vecs);
+	if (ret)
+		return ret;
+
+	ret = -ENOMEM;
 	irqs = kcalloc(nr_vecs, sizeof(u32), GFP_KERNEL);
 	if (!irqs)
-		return -ENOMEM;
+		goto out_free_affinity;
 
 	vecs = pci_enable_msix_range_wrapper(pdev, irqs, nr_vecs);
 	if (vecs <= 0) {
@@ -75,11 +80,20 @@ int pci_alloc_irq_vectors(struct pci_dev *pdev, int nr_vecs)
 			irqs[i] = pdev->irq + i;
 	}
 
+	/* XXX: this should really move into the core IRQ allocation code.. */
+	if (vecs > 1) {
+		for (i = 0; i < vecs; i++)
+			irq_program_affinity(irqs[i]);
+	}
+
 	pdev->irqs = irqs;
 	return vecs;
 
 out_free_irqs:
 	kfree(irqs);
+out_free_affinity:
+	kfree(pdev->dev.irq_affinity);
+	pdev->dev.irq_affinity = NULL;
 	return ret;
 }
 EXPORT_SYMBOL(pci_alloc_irq_vectors);
