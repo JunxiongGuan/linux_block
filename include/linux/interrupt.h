@@ -278,6 +278,9 @@ extern int irq_set_affinity_hint(unsigned int irq, const struct cpumask *m);
 extern int
 irq_set_affinity_notifier(unsigned int irq, struct irq_affinity_notify *notify);
 
+int irq_create_affinity_mask(struct cpumask **affinity_mask,
+		unsigned int nr_vecs);
+
 #else /* CONFIG_SMP */
 
 static inline int irq_set_affinity(unsigned int irq, const struct cpumask *m)
@@ -306,6 +309,13 @@ static inline int irq_set_affinity_hint(unsigned int irq,
 static inline int
 irq_set_affinity_notifier(unsigned int irq, struct irq_affinity_notify *notify)
 {
+	return 0;
+}
+
+static inline int irq_create_affinity_mask(struct cpumask **affinity_mask,
+		unsigned int nr_vecs)
+{
+	*affinity_mask = NULL;
 	return 0;
 }
 #endif /* CONFIG_SMP */
