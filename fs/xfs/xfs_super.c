@@ -222,6 +222,7 @@ xfs_parseargs(
 	 */
 	mp->m_flags |= XFS_MOUNT_BARRIER;
 	mp->m_flags |= XFS_MOUNT_COMPAT_IOSIZE;
+	mp->m_flags |= XFS_MOUNT_DISCARD;
 
 	/*
 	 * These can be overridden by the mount option parsing.
