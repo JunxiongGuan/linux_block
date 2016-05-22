@@ -16,6 +16,18 @@
 CONFIGFS=${CONFIGFS-/sys/kernel/config}
 CTRL_SYSFS=/sys/class/nvme
 
+nvmf_unload_driver()
+{
+	driver=$1
+	rmmod $driver
+}
+
+nvmf_load_driver()
+{
+	driver=$1
+	modprobe $driver
+}
+
 nvmf_delete_ctrl()
 {
     echo 1 > $CTRL_SYSFS/$1/delete_controller
