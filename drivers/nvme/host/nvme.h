@@ -77,6 +77,7 @@ enum nvme_ctrl_state {
 	NVME_CTRL_RECONNECTING,
 	NVME_CTRL_DELETING,
 	NVME_CTRL_DEAD,
+	NVME_CTRL_SCHED_RESET,
 };
 
 struct nvme_ctrl {

@@ -84,6 +84,14 @@ bool nvme_change_ctrl_state(struct nvme_ctrl *ctrl,
 
 	spin_lock_irq(&ctrl->lock);
 	switch (new_state) {
+	case NVME_CTRL_SCHED_RESET:
+		switch (old_state) {
+		case NVME_CTRL_LIVE:
+			changed = true;
+			/* FALLTHRU */
+		default:
+			break;
+		}
 	case NVME_CTRL_LIVE:
 		switch (old_state) {
 		case NVME_CTRL_NEW:
@@ -99,6 +107,7 @@ bool nvme_change_ctrl_state(struct nvme_ctrl *ctrl,
 		switch (old_state) {
 		case NVME_CTRL_NEW:
 		case NVME_CTRL_LIVE:
+		case NVME_CTRL_SCHED_RESET:
 		case NVME_CTRL_RECONNECTING:
 			changed = true;
 			/* FALLTHRU */
@@ -1352,6 +1361,15 @@ out_unlock:
 	return ret;
 }
 
+static int nvme_reset_ctrl(struct nvme_ctrl *ctrl)
+{
+	if (!nvme_change_ctrl_state(ctrl, NVME_CTRL_SCHED_RESET))
+		return -EPERM;
+
+	flush_work(&ctrl->scan_work);
+	return ctrl->ops->reset_ctrl(ctrl);
+}
+
 static long nvme_dev_ioctl(struct file *file, unsigned int cmd,
 		unsigned long arg)
 {
@@ -1365,7 +1383,7 @@ static long nvme_dev_ioctl(struct file *file, unsigned int cmd,
 		return nvme_dev_user_cmd(ctrl, argp);
 	case NVME_IOCTL_RESET:
 		dev_warn(ctrl->device, "resetting controller\n");
-		return ctrl->ops->reset_ctrl(ctrl);
+		return nvme_reset_ctrl(ctrl);
 	case NVME_IOCTL_SUBSYS_RESET:
 		return nvme_reset_subsystem(ctrl);
 	case NVME_IOCTL_RESCAN:
@@ -1391,7 +1409,7 @@ static ssize_t nvme_sysfs_reset(struct device *dev,
 	struct nvme_ctrl *ctrl = dev_get_drvdata(dev);
 	int ret;
 
-	ret = ctrl->ops->reset_ctrl(ctrl);
+	ret = nvme_reset_ctrl(ctrl);
 	if (ret < 0)
 		return ret;
 	return count;
