@@ -387,6 +387,10 @@ static void nvme_loop_disable_ctrl(struct nvme_loop_ctrl *ctrl, bool shutdown)
 {
 	int i;
 
+	/* TODO: replace with a disable state in the long run */
+	if (!ctrl->online_queues)
+		return;
+
 	nvme_stop_keep_alive(&ctrl->ctrl);
 
 	if (ctrl->online_queues > 1) {
@@ -407,6 +411,7 @@ static void nvme_loop_disable_ctrl(struct nvme_loop_ctrl *ctrl, bool shutdown)
 	blk_mq_tagset_busy_iter(&ctrl->admin_tag_set,
 				nvme_cancel_request, &ctrl->ctrl);
 	nvme_loop_destroy_admin_queue(ctrl);
+	ctrl->online_queues = 0;
 }
 
 static void nvme_loop_del_ctrl_work(struct work_struct *work)
