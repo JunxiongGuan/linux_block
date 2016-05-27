@@ -466,7 +466,7 @@ static void nvme_loop_reset_ctrl_work(struct work_struct *work)
 
 	ret = nvme_loop_configure_admin_queue(ctrl);
 	if (ret)
-		goto out_free_queues;
+		goto out_disable;
 
 	for (i = 1; i <= ctrl->ctrl.opts->nr_io_queues; i++) {
 		ctrl->queues[i].ctrl = ctrl;
@@ -480,7 +480,7 @@ static void nvme_loop_reset_ctrl_work(struct work_struct *work)
 	for (i = 1; i <= ctrl->ctrl.opts->nr_io_queues; i++) {
 		ret = nvmf_connect_io_queue(&ctrl->ctrl, i);
 		if (ret)
-			goto out_destroy_admin_q;
+			goto out_free_queues;
 	}
 
 	changed = nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_LIVE);
@@ -496,9 +496,8 @@ static void nvme_loop_reset_ctrl_work(struct work_struct *work)
 out_free_queues:
 	for (i = 1; i < ctrl->queue_count; i++)
 		nvmet_sq_destroy(&ctrl->queues[i].nvme_sq);
-out_destroy_admin_q:
 	nvme_loop_destroy_admin_queue(ctrl);
-
+out_disable:
 	dev_warn(ctrl->ctrl.device, "Removing after reset failure\n");
 	nvme_remove_namespaces(&ctrl->ctrl);
 	nvme_uninit_ctrl(&ctrl->ctrl);
