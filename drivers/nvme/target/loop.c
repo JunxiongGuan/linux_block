@@ -383,7 +383,7 @@ out_free_sq:
 	return error;
 }
 
-static void nvme_loop_shutdown_ctrl(struct nvme_loop_ctrl *ctrl)
+static void nvme_loop_disable_ctrl(struct nvme_loop_ctrl *ctrl, bool shutdown)
 {
 	int i;
 
@@ -398,8 +398,10 @@ static void nvme_loop_shutdown_ctrl(struct nvme_loop_ctrl *ctrl)
 			nvmet_sq_destroy(&ctrl->queues[i].nvme_sq);
 	}
 
-	if (ctrl->ctrl.state == NVME_CTRL_LIVE)
+	if (shutdown)
 		nvme_shutdown_ctrl(&ctrl->ctrl);
+	else
+		nvme_disable_ctrl(&ctrl->ctrl, ctrl->cap);
 
 	blk_mq_stop_hw_queues(ctrl->ctrl.admin_q);
 	blk_mq_tagset_busy_iter(&ctrl->admin_tag_set,
@@ -413,7 +415,7 @@ static void nvme_loop_del_ctrl_work(struct work_struct *work)
 				struct nvme_loop_ctrl, delete_work);
 
 	nvme_remove_namespaces(&ctrl->ctrl);
-	nvme_loop_shutdown_ctrl(ctrl);
+	nvme_loop_disable_ctrl(ctrl, true);
 	nvme_uninit_ctrl(&ctrl->ctrl);
 	nvme_put_ctrl(&ctrl->ctrl);
 }
@@ -462,7 +464,7 @@ static void nvme_loop_reset_ctrl_work(struct work_struct *work)
 	bool changed;
 	int i, ret;
 
-	nvme_loop_shutdown_ctrl(ctrl);
+	nvme_loop_disable_ctrl(ctrl, false);
 
 	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_RESETTING))
 		goto out_disable;
