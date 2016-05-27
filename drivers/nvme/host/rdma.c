@@ -1694,6 +1694,9 @@ static void nvme_rdma_reset_ctrl_work(struct work_struct *work)
 
 	nvme_rdma_shutdown_ctrl(ctrl);
 
+	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_RESETTING))
+		goto del_dead_ctrl;
+
 	ret = nvme_rdma_configure_admin_queue(ctrl);
 	if (ret) {
 		/* ctrl is already shutdown, just remove the ctrl */
@@ -1734,9 +1737,6 @@ del_dead_ctrl:
 static int nvme_rdma_reset_ctrl(struct nvme_ctrl *nctrl)
 {
 	struct nvme_rdma_ctrl *ctrl = to_rdma_ctrl(nctrl);
-
-	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_RESETTING))
-		return -EBUSY;
 
 	if (!queue_work(nvme_rdma_wq, &ctrl->reset_work))
 		return -EBUSY;
