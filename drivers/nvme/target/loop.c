@@ -464,6 +464,9 @@ static void nvme_loop_reset_ctrl_work(struct work_struct *work)
 
 	nvme_loop_shutdown_ctrl(ctrl);
 
+	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_RESETTING))
+		goto out_disable;
+
 	ret = nvme_loop_configure_admin_queue(ctrl);
 	if (ret)
 		goto out_disable;
@@ -507,9 +510,6 @@ out_disable:
 static int nvme_loop_reset_ctrl(struct nvme_ctrl *nctrl)
 {
 	struct nvme_loop_ctrl *ctrl = to_loop_ctrl(nctrl);
-
-	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_RESETTING))
-		return -EBUSY;
 
 	if (!schedule_work(&ctrl->reset_work))
 		return -EBUSY;
