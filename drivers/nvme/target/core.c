@@ -462,6 +462,7 @@ EXPORT_SYMBOL_GPL(nvmet_sq_init);
 bool nvmet_req_init(struct nvmet_req *req, struct nvmet_cq *cq,
 		struct nvmet_sq *sq, struct nvmet_fabrics_ops *ops)
 {
+	static int counter;
 	u16 status;
 
 	req->cq = cq;
@@ -470,6 +471,12 @@ bool nvmet_req_init(struct nvmet_req *req, struct nvmet_cq *cq,
 	req->sg = NULL;
 	req->sg_cnt = 0;
 	req->rsp->status = 0;
+
+	if (unlikely((counter++ % 31) == 0)) {
+		printk("failing CMD\n");
+		status = NVME_SC_INTERNAL;
+		goto fail;
+	}
 
 	if (unlikely(!req->sq->ctrl))
 		/* will return an error for any Non-connect command: */
