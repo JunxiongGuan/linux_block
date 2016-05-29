@@ -120,13 +120,12 @@ struct nvme_rdma_ctrl {
 	unsigned short		tl_retry_count;
 	struct blk_mq_tag_set	tag_set;
 	struct work_struct	delete_work;
-	struct work_struct	reset_work;
+	struct delayed_work	reset_work;
 	struct work_struct	err_work;
 
 	struct nvme_rdma_qe	async_event_sqe;
 
 	int			reconnect_delay;
-	struct delayed_work	reconnect_work;
 
 	struct list_head	list;
 
@@ -171,6 +170,7 @@ static int nvme_rdma_cm_handler(struct rdma_cm_id *cm_id,
 		struct rdma_cm_event *event);
 static void nvme_rdma_recv_done(struct ib_cq *cq, struct ib_wc *wc);
 static int __nvme_rdma_del_ctrl(struct nvme_rdma_ctrl *ctrl);
+static void nvme_rdma_disable_ctrl(struct nvme_rdma_ctrl *ctrl, bool shutdown);
 
 static inline int nvme_rdma_queue_idx(struct nvme_rdma_queue *queue)
 {
@@ -682,102 +682,26 @@ free_ctrl:
 	kfree(ctrl);
 }
 
-static void nvme_rdma_reconnect_ctrl_work(struct work_struct *work)
-{
-	struct nvme_rdma_ctrl *ctrl = container_of(to_delayed_work(work),
-			struct nvme_rdma_ctrl, reconnect_work);
-	bool changed;
-	int ret;
-
-	if (ctrl->queue_count > 1) {
-		nvme_rdma_free_io_queues(ctrl);
-
-		ret = blk_mq_reinit_tagset(&ctrl->tag_set);
-		if (ret)
-			goto requeue;
-	}
-
-	nvme_rdma_free_queue(&ctrl->queues[0]);
-
-	ret = blk_mq_reinit_tagset(&ctrl->admin_tag_set);
-	if (ret)
-		goto requeue;
-
-	ret = nvme_rdma_init_queue(ctrl, 0, NVMF_AQ_DEPTH);
-	if (ret)
-		goto requeue;
-
-	blk_mq_start_stopped_hw_queues(ctrl->ctrl.admin_q, true);
-
-	ret = nvmf_connect_admin_queue(&ctrl->ctrl);
-	if (ret)
-		goto stop_admin_q;
-
-	ret = nvme_enable_ctrl(&ctrl->ctrl, ctrl->cap);
-	if (ret)
-		goto stop_admin_q;
-
-	nvme_start_keep_alive(&ctrl->ctrl);
-
-	if (ctrl->queue_count > 1) {
-		ret = nvme_rdma_init_io_queues(ctrl);
-		if (ret)
-			goto stop_admin_q;
-
-		ret = nvme_rdma_connect_io_queues(ctrl);
-		if (ret)
-			goto stop_admin_q;
-	}
-
-	changed = nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_LIVE);
-	WARN_ON_ONCE(!changed);
-
-	if (ctrl->queue_count > 1)
-		nvme_start_queues(&ctrl->ctrl);
-
-	dev_info(ctrl->ctrl.device, "Successfully reconnected\n");
-
-	return;
-
-stop_admin_q:
-	blk_mq_stop_hw_queues(ctrl->ctrl.admin_q);
-requeue:
-	/* Make sure we are not resetting/deleting */
-	if (ctrl->ctrl.state == NVME_CTRL_RECONNECTING) {
-		dev_info(ctrl->ctrl.device,
-			"Faild reconnect attempt, requeueing...\n");
-		queue_delayed_work(nvme_rdma_wq, &ctrl->reconnect_work,
-					ctrl->reconnect_delay * HZ);
-	}
-}
-
 static void nvme_rdma_error_recovery_work(struct work_struct *work)
 {
 	struct nvme_rdma_ctrl *ctrl = container_of(work,
 			struct nvme_rdma_ctrl, err_work);
 
-	nvme_stop_keep_alive(&ctrl->ctrl);
-	if (ctrl->queue_count > 1)
-		nvme_stop_queues(&ctrl->ctrl);
-	blk_mq_stop_hw_queues(ctrl->ctrl.admin_q);
+	nvme_rdma_disable_ctrl(ctrl, false);
 
-	/* We must take care of fastfail/requeue all our inflight requests */
-	if (ctrl->queue_count > 1)
-		blk_mq_tagset_busy_iter(&ctrl->tag_set,
-					nvme_cancel_request, &ctrl->ctrl);
-	blk_mq_tagset_busy_iter(&ctrl->admin_tag_set,
-				nvme_cancel_request, &ctrl->ctrl);
+	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_RECONNECTING))
+		return;
 
 	dev_info(ctrl->ctrl.device, "reconnecting in %d seconds\n",
 		ctrl->reconnect_delay);
 
-	queue_delayed_work(nvme_rdma_wq, &ctrl->reconnect_work,
+	queue_delayed_work(nvme_rdma_wq, &ctrl->reset_work,
 				ctrl->reconnect_delay * HZ);
 }
 
 static void nvme_rdma_error_recovery(struct nvme_rdma_ctrl *ctrl)
 {
-	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_RECONNECTING))
+	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_SCHED_RESET))
 		return;
 
 	queue_work(nvme_rdma_wq, &ctrl->err_work);
@@ -1621,7 +1545,6 @@ static void nvme_rdma_disable_ctrl(struct nvme_rdma_ctrl *ctrl, bool shutdown)
 {
 	nvme_stop_keep_alive(&ctrl->ctrl);
 	cancel_work_sync(&ctrl->err_work);
-	cancel_delayed_work_sync(&ctrl->reconnect_work);
 
 	if (ctrl->queue_count > 1) {
 		nvme_stop_queues(&ctrl->ctrl);
@@ -1689,10 +1612,11 @@ static void nvme_rdma_remove_ctrl_work(struct work_struct *work)
 
 static void nvme_rdma_reset_ctrl_work(struct work_struct *work)
 {
-	struct nvme_rdma_ctrl *ctrl = container_of(work,
-					struct nvme_rdma_ctrl, reset_work);
-	int ret;
+	struct nvme_rdma_ctrl *ctrl =
+		container_of(work, struct nvme_rdma_ctrl, reset_work.work);
+	bool was_reconnect = ctrl->ctrl.state == NVME_CTRL_RECONNECTING;
 	bool changed;
+	int ret;
 
 	nvme_rdma_disable_ctrl(ctrl, false);
 
@@ -1731,19 +1655,27 @@ static void nvme_rdma_reset_ctrl_work(struct work_struct *work)
 	return;
 
 del_dead_ctrl:
-	/* Deleting this dead controller... */
-	dev_warn(ctrl->ctrl.device, "Removing after reset failure\n");
-	WARN_ON(!queue_work(nvme_rdma_wq, &ctrl->delete_work));
+	if (was_reconnect) {
+		/* Make sure we are not resetting/deleting */
+		dev_info(ctrl->ctrl.device,
+			"Faild reconnect attempt, requeueing...\n");
+		queue_delayed_work(nvme_rdma_wq, &ctrl->reset_work,
+					ctrl->reconnect_delay * HZ);
+	} else {
+		/* Deleting this dead controller... */
+		dev_warn(ctrl->ctrl.device, "Removing after reset failure\n");
+		WARN_ON(!queue_work(nvme_rdma_wq, &ctrl->delete_work));
+	}
 }
 
 static int nvme_rdma_reset_ctrl(struct nvme_ctrl *nctrl)
 {
 	struct nvme_rdma_ctrl *ctrl = to_rdma_ctrl(nctrl);
 
-	if (!queue_work(nvme_rdma_wq, &ctrl->reset_work))
+	if (!queue_delayed_work(nvme_rdma_wq, &ctrl->reset_work, 0))
 		return -EBUSY;
 
-	flush_work(&ctrl->reset_work);
+	flush_delayed_work(&ctrl->reset_work);
 
 	return 0;
 }
@@ -1885,11 +1817,9 @@ static struct nvme_ctrl *nvme_rdma_create_ctrl(struct device *dev,
 
 	/* XXX: Should be configurable */
 	ctrl->reconnect_delay = NVME_RDMA_DEF_RECONNECT_DELAY;
-	INIT_DELAYED_WORK(&ctrl->reconnect_work,
-			nvme_rdma_reconnect_ctrl_work);
 	INIT_WORK(&ctrl->err_work, nvme_rdma_error_recovery_work);
 	INIT_WORK(&ctrl->delete_work, nvme_rdma_del_ctrl_work);
-	INIT_WORK(&ctrl->reset_work, nvme_rdma_reset_ctrl_work);
+	INIT_DELAYED_WORK(&ctrl->reset_work, nvme_rdma_reset_ctrl_work);
 	spin_lock_init(&ctrl->lock);
 
 	ctrl->queue_count = opts->nr_io_queues + 1; /* +1 for admin queue */
