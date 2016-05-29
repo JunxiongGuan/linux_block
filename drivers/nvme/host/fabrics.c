@@ -95,7 +95,6 @@ static void nvmf_host_destroy(struct kref *ref)
 {
 	struct nvmf_host *host = container_of(ref, struct nvmf_host, ref);
 
-	kfree(host->nqn);
 	kfree(host);
 }
 
