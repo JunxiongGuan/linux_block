@@ -1617,7 +1617,7 @@ out_free_queue:
 	return error;
 }
 
-static void nvme_rdma_shutdown_ctrl(struct nvme_rdma_ctrl *ctrl)
+static void nvme_rdma_disable_ctrl(struct nvme_rdma_ctrl *ctrl, bool shutdown)
 {
 	nvme_stop_keep_alive(&ctrl->ctrl);
 	cancel_work_sync(&ctrl->err_work);
@@ -1630,8 +1630,10 @@ static void nvme_rdma_shutdown_ctrl(struct nvme_rdma_ctrl *ctrl)
 		nvme_rdma_free_io_queues(ctrl);
 	}
 
-	if (ctrl->ctrl.state == NVME_CTRL_LIVE)
+	if (shutdown)
 		nvme_shutdown_ctrl(&ctrl->ctrl);
+	else
+		nvme_disable_ctrl(&ctrl->ctrl, ctrl->cap);
 
 	blk_mq_stop_hw_queues(ctrl->ctrl.admin_q);
 	blk_mq_tagset_busy_iter(&ctrl->admin_tag_set,
@@ -1645,7 +1647,7 @@ static void nvme_rdma_del_ctrl_work(struct work_struct *work)
 				struct nvme_rdma_ctrl, delete_work);
 
 	nvme_remove_namespaces(&ctrl->ctrl);
-	nvme_rdma_shutdown_ctrl(ctrl);
+	nvme_rdma_disable_ctrl(ctrl, true);
 	nvme_uninit_ctrl(&ctrl->ctrl);
 	nvme_put_ctrl(&ctrl->ctrl);
 }
@@ -1692,7 +1694,7 @@ static void nvme_rdma_reset_ctrl_work(struct work_struct *work)
 	int ret;
 	bool changed;
 
-	nvme_rdma_shutdown_ctrl(ctrl);
+	nvme_rdma_disable_ctrl(ctrl, false);
 
 	if (!nvme_change_ctrl_state(&ctrl->ctrl, NVME_CTRL_RESETTING))
 		goto del_dead_ctrl;
