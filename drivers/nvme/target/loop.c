@@ -612,7 +612,6 @@ out_free_queues:
 out_disable:
 	dev_warn(ctrl->ctrl.device, "Removing after reset failure\n");
 	nvme_remove_namespaces(&ctrl->ctrl);
-	nvme_loop_disable_ctrl(ctrl, true);
 	nvme_uninit_ctrl(&ctrl->ctrl);
 	nvme_put_ctrl(&ctrl->ctrl);
 }
@@ -781,7 +780,6 @@ out_remove_admin_queue:
 out_free_queues:
 	kfree(ctrl->queues);
 out_uninit_ctrl:
-	nvme_loop_disable_ctrl(ctrl, true);
 	nvme_uninit_ctrl(&ctrl->ctrl);
 out_put_ctrl:
 	nvme_put_ctrl(&ctrl->ctrl);
