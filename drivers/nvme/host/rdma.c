@@ -84,6 +84,7 @@ struct nvme_rdma_iod {
 	struct ib_reg_wr	reg_wr;
 	struct ib_cqe		reg_cqe;
 	struct nvme_rdma_queue  *queue;
+	bool			aborted;
 	struct sg_table		sg_table;
 	struct scatterlist	first_sgl[];
 };
@@ -1320,18 +1321,91 @@ static int nvme_rdma_cm_handler(struct rdma_cm_id *cm_id,
 	return 0;
 }
 
-static enum blk_eh_timer_return
-nvme_rdma_timeout(struct request *rq, bool reserved)
+static void abort_endio(struct request *req, int error)
 {
-	struct nvme_rdma_iod *iod = blk_mq_rq_to_pdu(rq);
+	struct nvme_rdma_iod *iod = blk_mq_rq_to_pdu(req);
+	struct nvme_rdma_queue *queue = iod->queue;
+	u16 status = req->errors;
 
-	/* queue error recovery */
-	nvme_rdma_error_recovery(iod->queue->ctrl);
+	dev_warn(queue->ctrl->ctrl.device, "Abort status: 0x%x", status);
+	atomic_inc(&queue->ctrl->ctrl.abort_limit);
+	blk_mq_free_request(req);
+}
 
-	/* fail with DNR on cmd timeout */
-	rq->errors = NVME_SC_ABORT_REQ | NVME_SC_DNR;
+static enum blk_eh_timer_return nvme_rdma_timeout(struct request *req,
+		bool reserved)
+{
+	struct nvme_rdma_iod *iod = blk_mq_rq_to_pdu(req);
+	struct nvme_rdma_queue *queue = iod->queue;
+	struct nvme_rdma_ctrl *ctrl = queue->ctrl;
+	u16 qid = nvme_rdma_queue_idx(queue);
+	struct request *abort_req;
+	struct nvme_command cmd;
 
-	return BLK_EH_HANDLED;
+	if (ctrl->ctrl.state == NVME_CTRL_RESETTING) {
+		dev_warn(ctrl->ctrl.device,
+			 "I/O %d QID %d timeout, disable controller\n",
+			 req->tag, qid);
+		req->errors = NVME_SC_CANCELLED;
+		return BLK_EH_HANDLED;
+	}
+
+	/*
+	 * Shutdown the controller immediately and schedule a reset if the
+	 * command was already aborted once before and still hasn't been
+	 * returned to the driver, or if this is the admin queue.
+	 */
+	if (!qid || iod->aborted) {
+		dev_warn(ctrl->ctrl.device,
+			 "I/O %d QID %d timeout, reset controller\n",
+			 req->tag, qid);
+
+		if (nvme_change_ctrl_state(&ctrl->ctrl,
+				NVME_CTRL_SCHED_RESET)) {
+			nvme_rdma_disable_ctrl(ctrl, false);
+			queue_delayed_work(nvme_rdma_wq, &ctrl->reset_work, 0);
+		}
+
+		/*
+		 * Mark the request as handled, since the inline shutdown
+		 * forces all outstanding requests to complete.
+		 */
+		req->errors = NVME_SC_CANCELLED;
+		return BLK_EH_HANDLED;
+	}
+
+	iod->aborted = true;
+
+	if (atomic_dec_return(&ctrl->ctrl.abort_limit) < 0) {
+		atomic_inc(&ctrl->ctrl.abort_limit);
+		return BLK_EH_RESET_TIMER;
+	}
+
+	memset(&cmd, 0, sizeof(cmd));
+	cmd.abort.opcode = nvme_admin_abort_cmd;
+	cmd.abort.cid = req->tag;
+	cmd.abort.sqid = cpu_to_le16(qid);
+
+	dev_warn(ctrl->ctrl.device,
+		"I/O %d QID %d timeout, aborting\n", req->tag, qid);
+
+	abort_req = nvme_alloc_request(ctrl->ctrl.admin_q, &cmd,
+			BLK_MQ_REQ_NOWAIT, NVME_QID_ANY);
+	if (IS_ERR(abort_req)) {
+		atomic_inc(&ctrl->ctrl.abort_limit);
+		return BLK_EH_RESET_TIMER;
+	}
+
+	abort_req->timeout = ADMIN_TIMEOUT;
+	abort_req->end_io_data = NULL;
+	blk_execute_rq_nowait(abort_req->q, NULL, abort_req, 0, abort_endio);
+
+	/*
+	 * The aborted req will be completed on receiving the abort req.
+	 * We enable the timer again. If hit twice, it'll cause a device reset,
+	 * as the device then is in a faulty state.
+	 */
+	return BLK_EH_RESET_TIMER;
 }
 
 static int nvme_rdma_queue_rq(struct blk_mq_hw_ctx *hctx,
@@ -1349,6 +1423,8 @@ static int nvme_rdma_queue_rq(struct blk_mq_hw_ctx *hctx,
 	int ret;
 
 	WARN_ON_ONCE(rq->tag < 0);
+
+	iod->aborted = false;
 
 	dev = queue->device->dev;
 	ib_dma_sync_single_for_cpu(dev, sqe->dma,
@@ -1428,6 +1504,12 @@ static void nvme_rdma_complete_rq(struct request *rq)
 			error = rq->errors;
 		else
 			error = nvme_error_status(rq->errors);
+	}
+
+	if (unlikely(iod->aborted)) {
+		dev_warn(iod->queue->ctrl->ctrl.device,
+			"completing aborted command with status: %04x\n",
+			rq->errors);
 	}
 
 	blk_mq_end_request(rq, error);
