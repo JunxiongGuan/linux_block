@@ -172,10 +172,12 @@ static int nvme_loop_queue_rq(struct blk_mq_hw_ctx *hctx,
 		return ret;
 
 	iod->req.port = nvmet_loop_port;
+	iod->cmd.common.command_id = req->tag;
+
+	blk_mq_start_request(req);
+
 	if (!nvmet_req_init(&iod->req, &queue->nvme_cq,
 			&queue->nvme_sq, &nvme_loop_ops)) {
-		nvme_cleanup_cmd(req);
-		blk_mq_start_request(req);
 		nvme_loop_queue_response(&iod->req);
 		return 0;
 	}
@@ -191,9 +193,6 @@ static int nvme_loop_queue_rq(struct blk_mq_hw_ctx *hctx,
 		iod->req.sg_cnt = blk_rq_map_sg(req->q, req, iod->sg_table.sgl);
 		BUG_ON(iod->req.sg_cnt > req->nr_phys_segments);
 	}
-
-	iod->cmd.common.command_id = req->tag;
-	blk_mq_start_request(req);
 
 	schedule_work(&iod->work);
 	return 0;
