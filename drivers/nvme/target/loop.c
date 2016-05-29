@@ -259,6 +259,15 @@ static int nvme_loop_queue_rq(struct blk_mq_hw_ctx *hctx,
 
 	blk_mq_start_request(req);
 
+	if (req->cmd_type != REQ_TYPE_DRV_PRIV &&
+	    (iod->queue->ctrl->ctrl.state != NVME_CTRL_LIVE &&
+	     iod->queue->ctrl->ctrl.state != NVME_CTRL_DELETING)) {
+		if (ns && !test_bit(NVME_NS_DEAD, &ns->flags))
+			return BLK_MQ_RQ_QUEUE_BUSY;
+		else
+			return BLK_MQ_RQ_QUEUE_ERROR;
+	}
+
 	if (!nvmet_req_init(&iod->req, &queue->nvme_cq,
 			&queue->nvme_sq, &nvme_loop_ops)) {
 		nvme_loop_queue_response(&iod->req);
