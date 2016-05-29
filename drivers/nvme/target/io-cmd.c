@@ -14,6 +14,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #include <linux/blkdev.h>
 #include <linux/module.h>
+#include <linux/delay.h>
 #include "nvmet.h"
 
 static void nvmet_bio_done(struct bio *bio)
@@ -50,6 +51,13 @@ static void nvmet_execute_rw(struct nvmet_req *req)
 	sector_t sector;
 	blk_qc_t cookie;
 	int rw, i;
+
+	static int counter;
+
+	if (unlikely((counter % 1024) == 0)) {
+		printk("delaying CMD\n");
+		ssleep(65);
+	}
 
 	if (!req->sg_cnt) {
 		nvmet_req_complete(req, 0);
