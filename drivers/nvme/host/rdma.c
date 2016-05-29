@@ -1548,6 +1548,9 @@ out_free_queue:
 
 static void nvme_rdma_disable_ctrl(struct nvme_rdma_ctrl *ctrl, bool shutdown)
 {
+	if (!ctrl->online_queues)
+		return;
+
 	nvme_stop_keep_alive(&ctrl->ctrl);
 	cancel_work_sync(&ctrl->err_work);
 
@@ -1567,6 +1570,7 @@ static void nvme_rdma_disable_ctrl(struct nvme_rdma_ctrl *ctrl, bool shutdown)
 	blk_mq_tagset_busy_iter(&ctrl->admin_tag_set,
 				nvme_cancel_request, &ctrl->ctrl);
 	nvme_rdma_destroy_admin_queue(ctrl);
+	ctrl->online_queues = 0;
 }
 
 static void nvme_rdma_del_ctrl_work(struct work_struct *work)
