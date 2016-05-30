@@ -53,6 +53,7 @@ enum {
 	NVMF_OPT_QUEUE_SIZE	= 1 << 4,
 	NVMF_OPT_NR_IO_QUEUES	= 1 << 5,
 	NVMF_OPT_TL_RETRY_COUNT	= 1 << 6,
+	NVMF_OPT_KATO		= 1 << 7,
 	NVMF_OPT_HOSTNQN	= 1 << 8,
 };
 
@@ -73,6 +74,8 @@ enum {
  * @tl_retry_count: Number of transport layer retries for a fabric queue before
  *		     kicking upper layer(s) error recovery.
  * @discovery_nqn:  Was the subsysnqn passed in the discovery nqn?
+ *                  kicking upper layer(s) error recovery.
+ * @kato:       keep-alive timeout.
  *
  * Example: echo ipaddr=192.168.13.55,transport=rdma,ipport=7,\
  * nqn=nqn.2015-01.com.example:nvme:nvm-subsystem-sn-d78432 \
@@ -91,6 +94,7 @@ struct nvmf_ctrl_options {
 	unsigned int		nr_io_queues;
 	unsigned short		tl_retry_count;
 	bool			discovery_nqn;
+	unsigned int		kato;
 	struct nvmf_host	*host;
 };
 
