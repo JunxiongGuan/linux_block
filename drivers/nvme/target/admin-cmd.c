@@ -123,8 +123,8 @@ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
 	id->ver = cpu_to_le32(ctrl->subsys->ver);
 
 	/* XXX: figure out what to do about RTD3R/RTD3 */
-	id->oaes = (1 << 8);
-	id->ctratt = (1 << 0);
+	id->oaes = cpu_to_le32(1 << 8);
+	id->ctratt = cpu_to_le32(1 << 0);
 
 	id->oacs = 0;
 
