@@ -384,7 +384,8 @@ static void __nvmet_req_complete(struct nvmet_req *req, u16 status)
 
 	/* XXX: need to fill in something useful for sq_head */
 	req->rsp->sq_head = 0;
-	req->rsp->sq_id = cpu_to_le16(req->sq->qid);
+	if (likely(req->sq)) /* may happen during early failure */
+		req->rsp->sq_id = cpu_to_le16(req->sq->qid);
 	req->rsp->command_id = req->cmd->common.command_id;
 
 	if (req->ns)
