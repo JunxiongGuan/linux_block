@@ -1,6 +1,6 @@
 /*
- * fabrics.h - NVMe Fabrics implementation header for
- *	       host/initiator devices.
+ * NVMe over Fabrics common host code.
+ * Copyright (c) 2015-2016 HGST, a Western Digital Company.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -10,12 +10,7 @@
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
- * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- *
- * This is used to implement a specific network fabric technology to the
- * NVMe Fabrics standard found in the NVMe specification.
  */
-
 #ifndef _NVME_FABRICS_H
 #define _NVME_FABRICS_H 1
 

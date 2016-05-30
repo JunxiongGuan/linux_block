@@ -1,8 +1,6 @@
 /*
- * fabrics.c - NVMe Fabrics implementation library for
- *	       host/initiator devices.
- *
- * Copyright (c) 2015 HGST, a Western Digital Company.
+ * NVMe over Fabrics common host code.
+ * Copyright (c) 2015-2016 HGST, a Western Digital Company.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -12,12 +10,7 @@
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
- * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- *
- * This is used to implement a specific network fabric technology to the
- * NVMe Fabrics standard found in the NVMe specification.
  */
-
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #include <linux/init.h>
 #include <linux/miscdevice.h>
