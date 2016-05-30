@@ -430,8 +430,10 @@ void nvmet_sq_destroy(struct nvmet_sq *sq)
 	wait_for_completion(&sq->free_done);
 	percpu_ref_exit(&sq->ref);
 
-	if (sq->ctrl)
+	if (sq->ctrl) {
 		nvmet_ctrl_put(sq->ctrl);
+		sq->ctrl = NULL; /* allows reusing the queue later */
+	}
 }
 EXPORT_SYMBOL_GPL(nvmet_sq_destroy);
 

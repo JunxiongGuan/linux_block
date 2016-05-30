@@ -464,17 +464,6 @@ static void nvme_loop_reset_ctrl_work(struct work_struct *work)
 
 	nvme_loop_shutdown_ctrl(ctrl);
 
-	/*
-	 * Reset the nvme_sq field so that we have a clean slave for the
-	 * connect operations below.  Most importantly we need the ctrl
-	 * pointer to be NULL so that the reconnected queues can be installed.
-	 */
-	for (i = 0; i < ctrl->queue_count; i++) {
-		ctrl->queues[i].nvme_sq.ctrl = NULL;
-		ctrl->queues[i].nvme_sq.qid = 0;
-		ctrl->queues[i].nvme_sq.size = 0;
-	}
-
 	ret = nvme_loop_configure_admin_queue(ctrl);
 	if (ret)
 		goto out_free_queues;
