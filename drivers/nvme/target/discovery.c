@@ -1,4 +1,5 @@
 /*
+ * Discovery service for the NVMe over Fabrics target.
  * Copyright (C) 2016 Intel Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -9,13 +10,7 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- *
- * This file implements the discovery controller feature of NVMe over
- * Fabrics specification standard.
  */
-
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #include <linux/slab.h>
 #include <generated/utsrelease.h>
