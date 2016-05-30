@@ -127,7 +127,14 @@ static void nvmet_execute_identify_ctrl(struct nvmet_req *req)
 	id->ctratt = (1 << 0);
 
 	id->oacs = 0;
+
+	/*
+	 * We don't really have a practical limit on the number of abort
+	 * comands.  But we don't do anything useful for abort either, so
+	 * no point in allowing more abort commands than the spec requires.
+	 */
 	id->acl = 3;
+
 	id->aerl = NVMET_ASYNC_EVENTS - 1;
 
 	/* first slot is read-only, only one slot supported */
@@ -274,6 +281,19 @@ out:
 	nvmet_req_complete(req, status);
 }
 
+/*
+ * A "mimimum viable" abort implementation: the command is mandatory in the
+ * spec, but we are not required to do any useful work.  We couldn't really
+ * do a useful abort, so don't bother even with waiting for the command
+ * to be exectuted and return immediately telling the command to abort
+ * wasn't found.
+ */
+static void nvmet_execute_abort(struct nvmet_req *req)
+{
+	nvmet_set_result(req, 1);
+	nvmet_req_complete(req, 0);
+}
+
 static void nvmet_execute_set_features(struct nvmet_req *req)
 {
 	struct nvmet_subsys *subsys = req->sq->ctrl->subsys;
@@ -417,12 +437,10 @@ int nvmet_parse_admin_cmd(struct nvmet_req *req)
 			return 0;
 		}
 		break;
-#if 0
 	case nvme_admin_abort_cmd:
 		req->execute = nvmet_execute_abort;
 		req->data_len = 0;
 		return 0;
-#endif
 	case nvme_admin_set_features:
 		req->execute = nvmet_execute_set_features;
 		req->data_len = 0;
