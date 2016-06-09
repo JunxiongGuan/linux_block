@@ -428,9 +428,10 @@ int ide_raw_taskfile(ide_drive_t *drive, struct ide_cmd *cmd, u8 *buf,
 {
 	struct request *rq;
 	int error;
-	int rw = !(cmd->tf_flags & IDE_TFLAG_WRITE) ? READ : WRITE;
+	enum req_op op = (cmd->tf_flags & IDE_TFLAG_WRITE) ?
+		REQ_OP_WRITE : REQ_OP_READ;
 
-	rq = blk_get_request(drive->queue, rw, __GFP_RECLAIM);
+	rq = blk_get_request(drive->queue, op, __GFP_RECLAIM);
 	rq->cmd_type = REQ_TYPE_ATA_TASKFILE;
 
 	/*

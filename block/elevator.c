@@ -716,7 +716,7 @@ void elv_put_request(struct request_queue *q, struct request *rq)
 		e->type->ops.elevator_put_req_fn(rq);
 }
 
-int elv_may_queue(struct request_queue *q, int op, int op_flags)
+int elv_may_queue(struct request_queue *q, enum req_op op, int op_flags)
 {
 	struct elevator_queue *e = q->elevator;
 

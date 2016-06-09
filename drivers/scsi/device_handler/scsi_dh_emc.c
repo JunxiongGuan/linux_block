@@ -271,7 +271,8 @@ static struct request *get_req(struct scsi_device *sdev, int cmd,
 	int len = 0;
 
 	rq = blk_get_request(sdev->request_queue,
-			(cmd != INQUIRY) ? WRITE : READ, GFP_NOIO);
+			(cmd != INQUIRY) ? REQ_OP_WRITE : REQ_OP_READ,
+			GFP_NOIO);
 	if (IS_ERR(rq)) {
 		sdev_printk(KERN_INFO, sdev, "get_req: blk_get_request failed");
 		return NULL;

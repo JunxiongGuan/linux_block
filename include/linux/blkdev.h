@@ -629,7 +629,7 @@ static inline unsigned int blk_queue_cluster(struct request_queue *q)
 /*
  * We regard a request as sync, if either a read or a sync write
  */
-static inline bool rw_is_sync(int op, unsigned int rw_flags)
+static inline bool rw_is_sync(enum req_op op, unsigned int rw_flags)
 {
 	return op == REQ_OP_READ || (rw_flags & REQ_SYNC);
 }
@@ -786,7 +786,8 @@ extern blk_qc_t generic_make_request(struct bio *bio);
 extern void blk_rq_init(struct request_queue *q, struct request *rq);
 extern void blk_put_request(struct request *);
 extern void __blk_put_request(struct request_queue *, struct request *);
-extern struct request *blk_get_request(struct request_queue *, int, gfp_t);
+extern struct request *blk_get_request(struct request_queue *, enum req_op op,
+		gfp_t);
 extern struct request *blk_make_request(struct request_queue *, struct bio *,
 					gfp_t);
 extern void blk_rq_set_block_pc(struct request *);

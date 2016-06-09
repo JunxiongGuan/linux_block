@@ -1014,8 +1014,8 @@ pscsi_execute_cmd(struct se_cmd *cmd)
 
 	if (!sgl) {
 		req = blk_get_request(pdv->pdv_sd->request_queue,
-				(data_direction == DMA_TO_DEVICE),
-				GFP_KERNEL);
+				data_direction == DMA_TO_DEVICE ?
+				REQ_OP_WRITE : REQ_OP_READ, GFP_KERNEL);
 		if (IS_ERR(req)) {
 			pr_err("PSCSI: blk_get_request() failed\n");
 			ret = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;

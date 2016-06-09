@@ -959,7 +959,8 @@ static void __freed_request(struct request_list *rl, int sync)
  * A request has just been released.  Account for it, update the full and
  * congestion status, wake up any waiters.   Called under q->queue_lock.
  */
-static void freed_request(struct request_list *rl, int op, unsigned int flags)
+static void freed_request(struct request_list *rl, enum req_op op,
+		unsigned int flags)
 {
 	struct request_queue *q = rl->q;
 	int sync = rw_is_sync(op, flags);
@@ -1066,7 +1067,7 @@ static struct io_context *rq_ioc(struct bio *bio)
  * Returns ERR_PTR on failure, with @q->queue_lock held.
  * Returns request pointer on success, with @q->queue_lock *not held*.
  */
-static struct request *__get_request(struct request_list *rl, int op,
+static struct request *__get_request(struct request_list *rl, enum req_op op,
 				     int op_flags, struct bio *bio,
 				     gfp_t gfp_mask)
 {
@@ -1240,7 +1241,7 @@ rq_starved:
  * Returns ERR_PTR on failure, with @q->queue_lock held.
  * Returns request pointer on success, with @q->queue_lock *not held*.
  */
-static struct request *get_request(struct request_queue *q, int op,
+static struct request *get_request(struct request_queue *q, enum req_op op,
 				   int op_flags, struct bio *bio,
 				   gfp_t gfp_mask)
 {
@@ -1282,18 +1283,18 @@ retry:
 	goto retry;
 }
 
-static struct request *blk_old_get_request(struct request_queue *q, int rw,
-		gfp_t gfp_mask)
+static struct request *blk_old_get_request(struct request_queue *q,
+		enum req_op op, gfp_t gfp_mask)
 {
 	struct request *rq;
 
-	BUG_ON(rw != READ && rw != WRITE);
+	BUG_ON(op != REQ_OP_READ && op != REQ_OP_WRITE);
 
 	/* create ioc upfront */
 	create_io_context(gfp_mask, q->node);
 
 	spin_lock_irq(q->queue_lock);
-	rq = get_request(q, rw, 0, NULL, gfp_mask);
+	rq = get_request(q, op, 0, NULL, gfp_mask);
 	if (IS_ERR(rq))
 		spin_unlock_irq(q->queue_lock);
 	/* q->queue_lock is unlocked at this point */
@@ -1301,14 +1302,15 @@ static struct request *blk_old_get_request(struct request_queue *q, int rw,
 	return rq;
 }
 
-struct request *blk_get_request(struct request_queue *q, int rw, gfp_t gfp_mask)
+struct request *blk_get_request(struct request_queue *q, enum req_op op,
+		gfp_t gfp_mask)
 {
 	if (q->mq_ops)
-		return blk_mq_alloc_request(q, rw,
+		return blk_mq_alloc_request(q, op,
 			(gfp_mask & __GFP_DIRECT_RECLAIM) ?
 				0 : BLK_MQ_REQ_NOWAIT);
 	else
-		return blk_old_get_request(q, rw, gfp_mask);
+		return blk_old_get_request(q, op, gfp_mask);
 }
 EXPORT_SYMBOL(blk_get_request);
 
@@ -1346,7 +1348,7 @@ EXPORT_SYMBOL(blk_get_request);
 struct request *blk_make_request(struct request_queue *q, struct bio *bio,
 				 gfp_t gfp_mask)
 {
-	struct request *rq = blk_get_request(q, bio_data_dir(bio), gfp_mask);
+	struct request *rq = blk_get_request(q, bio_op(bio), gfp_mask);
 
 	if (IS_ERR(rq))
 		return rq;
@@ -1495,7 +1497,7 @@ void __blk_put_request(struct request_queue *q, struct request *req)
 	 */
 	if (req->cmd_flags & REQ_ALLOCED) {
 		unsigned int flags = req->cmd_flags;
-		int op = req_op(req);
+		enum req_op op = req_op(req);
 		struct request_list *rl = blk_rq_rl(req);
 
 		BUG_ON(!list_empty(&req->queuelist));

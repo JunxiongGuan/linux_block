@@ -196,7 +196,8 @@ struct request *nvme_alloc_request(struct request_queue *q,
 	bool write = cmd->common.opcode & 1;
 	struct request *req;
 
-	req = blk_mq_alloc_request(q, write, flags);
+	req = blk_mq_alloc_request(q, write ?
+			REQ_OP_WRITE : REQ_OP_READ, flags);
 	if (IS_ERR(req))
 		return req;
 

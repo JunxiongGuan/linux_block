@@ -159,7 +159,7 @@ bool blk_mq_can_queue(struct blk_mq_hw_ctx *hctx)
 EXPORT_SYMBOL(blk_mq_can_queue);
 
 static void blk_mq_rq_ctx_init(struct request_queue *q, struct blk_mq_ctx *ctx,
-			       struct request *rq, int op,
+			       struct request *rq, enum req_op op,
 			       unsigned int op_flags)
 {
 	if (blk_queue_io_stat(q))
@@ -208,7 +208,8 @@ static void blk_mq_rq_ctx_init(struct request_queue *q, struct blk_mq_ctx *ctx,
 }
 
 static struct request *
-__blk_mq_alloc_request(struct blk_mq_alloc_data *data, int op, int op_flags)
+__blk_mq_alloc_request(struct blk_mq_alloc_data *data, enum req_op op,
+		int op_flags)
 {
 	struct request *rq;
 	unsigned int tag;
@@ -230,7 +231,7 @@ __blk_mq_alloc_request(struct blk_mq_alloc_data *data, int op, int op_flags)
 	return NULL;
 }
 
-struct request *blk_mq_alloc_request(struct request_queue *q, int rw,
+struct request *blk_mq_alloc_request(struct request_queue *q, enum req_op op,
 		unsigned int flags)
 {
 	struct blk_mq_ctx *ctx;
@@ -247,7 +248,7 @@ struct request *blk_mq_alloc_request(struct request_queue *q, int rw,
 	hctx = q->mq_ops->map_queue(q, ctx->cpu);
 	blk_mq_set_alloc_data(&alloc_data, q, flags, ctx, hctx);
 
-	rq = __blk_mq_alloc_request(&alloc_data, rw, 0);
+	rq = __blk_mq_alloc_request(&alloc_data, op, 0);
 	if (!rq && !(flags & BLK_MQ_REQ_NOWAIT)) {
 		__blk_mq_run_hw_queue(hctx);
 		blk_mq_put_ctx(ctx);
@@ -255,7 +256,7 @@ struct request *blk_mq_alloc_request(struct request_queue *q, int rw,
 		ctx = blk_mq_get_ctx(q);
 		hctx = q->mq_ops->map_queue(q, ctx->cpu);
 		blk_mq_set_alloc_data(&alloc_data, q, flags, ctx, hctx);
-		rq =  __blk_mq_alloc_request(&alloc_data, rw, 0);
+		rq =  __blk_mq_alloc_request(&alloc_data, op, 0);
 		ctx = alloc_data.ctx;
 	}
 	blk_mq_put_ctx(ctx);
@@ -1170,7 +1171,7 @@ static struct request *blk_mq_map_request(struct request_queue *q,
 	struct blk_mq_hw_ctx *hctx;
 	struct blk_mq_ctx *ctx;
 	struct request *rq;
-	int op = bio_data_dir(bio);
+	enum req_op op = bio_op(bio);
 	int op_flags = 0;
 	struct blk_mq_alloc_data alloc_data;
 

@@ -361,9 +361,10 @@ static int osst_execute(struct osst_request *SRpnt, const unsigned char *cmd,
 	struct rq_map_data *mdata = &SRpnt->stp->buffer->map_data;
 
 	int err = 0;
-	int write = (data_direction == DMA_TO_DEVICE);
 
-	req = blk_get_request(SRpnt->stp->device->request_queue, write, GFP_KERNEL);
+	req = blk_get_request(SRpnt->stp->device->request_queue,
+			(data_direction == DMA_TO_DEVICE) ?
+			REQ_OP_WRITE : REQ_OP_READ, GFP_KERNEL);
 	if (IS_ERR(req))
 		return DRIVER_ERROR << 24;
 

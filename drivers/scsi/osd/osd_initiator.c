@@ -1563,7 +1563,8 @@ static struct request *_make_request(struct request_queue *q, bool has_write,
 	else {
 		struct request *req;
 
-		req = blk_get_request(q, has_write ? WRITE : READ, flags);
+		req = blk_get_request(q, has_write ? REQ_OP_WRITE : REQ_OP_READ,
+				flags);
 		if (IS_ERR(req))
 			return req;
 

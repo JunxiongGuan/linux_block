@@ -188,7 +188,10 @@ int scsi_execute(struct scsi_device *sdev, const unsigned char *cmd,
 	int write = (data_direction == DMA_TO_DEVICE);
 	int ret = DRIVER_ERROR << 24;
 
-	req = blk_get_request(sdev->request_queue, write, __GFP_RECLAIM);
+	req = blk_get_request(sdev->request_queue,
+			data_direction == DMA_TO_DEVICE ?
+				REQ_OP_WRITE : REQ_OP_READ,
+			__GFP_RECLAIM);
 	if (IS_ERR(req))
 		return ret;
 	blk_rq_set_block_pc(req);

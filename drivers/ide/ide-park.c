@@ -31,7 +31,7 @@ static void issue_park_cmd(ide_drive_t *drive, unsigned long timeout)
 	}
 	spin_unlock_irq(&hwif->lock);
 
-	rq = blk_get_request(q, READ, __GFP_RECLAIM);
+	rq = blk_get_request(q, REQ_OP_READ, __GFP_RECLAIM);
 	rq->cmd[0] = REQ_PARK_HEADS;
 	rq->cmd_len = 1;
 	rq->cmd_type = REQ_TYPE_DRV_PRIV;
@@ -45,7 +45,7 @@ static void issue_park_cmd(ide_drive_t *drive, unsigned long timeout)
 	 * Make sure that *some* command is sent to the drive after the
 	 * timeout has expired, so power management will be reenabled.
 	 */
-	rq = blk_get_request(q, READ, GFP_NOWAIT);
+	rq = blk_get_request(q, REQ_OP_READ, GFP_NOWAIT);
 	if (IS_ERR(rq))
 		goto out;
 

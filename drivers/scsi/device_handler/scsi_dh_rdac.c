@@ -263,12 +263,12 @@ do { \
 } while (0);
 
 static struct request *get_rdac_req(struct scsi_device *sdev,
-			void *buffer, unsigned buflen, int rw)
+			void *buffer, unsigned buflen, enum req_op op)
 {
 	struct request *rq;
 	struct request_queue *q = sdev->request_queue;
 
-	rq = blk_get_request(q, rw, GFP_NOIO);
+	rq = blk_get_request(q, op, GFP_NOIO);
 
 	if (IS_ERR(rq)) {
 		sdev_printk(KERN_INFO, sdev,
@@ -333,7 +333,7 @@ static struct request *rdac_failover_get(struct scsi_device *sdev,
 	}
 
 	/* get request for block layer packet command */
-	rq = get_rdac_req(sdev, &h->ctlr->mode_select, data_size, WRITE);
+	rq = get_rdac_req(sdev, &h->ctlr->mode_select, data_size, REQ_OP_WRITE);
 	if (!rq)
 		return NULL;
 
@@ -407,7 +407,7 @@ static int submit_inquiry(struct scsi_device *sdev, int page_code,
 	struct request_queue *q = sdev->request_queue;
 	int err = SCSI_DH_RES_TEMP_UNAVAIL;
 
-	rq = get_rdac_req(sdev, &h->inq, len, READ);
+	rq = get_rdac_req(sdev, &h->inq, len, REQ_OP_READ);
 	if (!rq)
 		goto done;
 
