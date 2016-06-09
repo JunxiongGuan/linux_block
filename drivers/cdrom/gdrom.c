@@ -659,13 +659,8 @@ static void gdrom_request(struct request_queue *rq)
 	struct request *req;
 
 	while ((req = blk_fetch_request(rq)) != NULL) {
-		if (req->cmd_type != REQ_TYPE_FS) {
-			printk(KERN_DEBUG "gdrom: Non-fs request ignored\n");
-			__blk_end_request_all(req, -EIO);
-			continue;
-		}
-		if (rq_data_dir(req) != READ) {
-			pr_notice("Read only device - write request ignored\n");
+		if (req->op != REQ_OP_READ) {
+			pr_notice("Read only device - non-READ request ignored\n");
 			__blk_end_request_all(req, -EIO);
 			continue;
 		}

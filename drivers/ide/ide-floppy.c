@@ -72,7 +72,7 @@ static int ide_floppy_callback(ide_drive_t *drive, int dsc)
 		drive->failed_pc = NULL;
 
 	if (pc->c[0] == GPCMD_READ_10 || pc->c[0] == GPCMD_WRITE_10 ||
-	    rq->cmd_type == REQ_TYPE_BLOCK_PC)
+	    rq->op == REQ_OP_SCSI)
 		uptodate = 1; /* FIXME */
 	else if (pc->c[0] == GPCMD_REQUEST_SENSE) {
 
@@ -97,7 +97,7 @@ static int ide_floppy_callback(ide_drive_t *drive, int dsc)
 			       "Aborting request!\n");
 	}
 
-	if (rq->cmd_type == REQ_TYPE_DRV_PRIV)
+	if (rq->op == REQ_OP_DRV_PRIV)
 		rq->errors = uptodate ? 0 : IDE_DRV_ERROR_GENERAL;
 
 	return uptodate;
@@ -246,7 +246,7 @@ static ide_startstop_t ide_floppy_do_request(ide_drive_t *drive,
 		} else
 			printk(KERN_ERR PFX "%s: I/O error\n", drive->name);
 
-		if (rq->cmd_type == REQ_TYPE_DRV_PRIV) {
+		if (rq->op == REQ_OP_DRV_PRIV) {
 			rq->errors = 0;
 			ide_complete_rq(drive, 0, blk_rq_bytes(rq));
 			return ide_stopped;
@@ -254,8 +254,10 @@ static ide_startstop_t ide_floppy_do_request(ide_drive_t *drive,
 			goto out_end;
 	}
 
-	switch (rq->cmd_type) {
-	case REQ_TYPE_FS:
+	switch (rq->op) {
+	case REQ_OP_READ:
+	case REQ_OP_WRITE:
+	case REQ_OP_FLUSH:
 		if (((long)blk_rq_pos(rq) % floppy->bs_factor) ||
 		    (blk_rq_sectors(rq) % floppy->bs_factor)) {
 			printk(KERN_ERR PFX "%s: unsupported r/w rq size\n",
@@ -265,11 +267,11 @@ static ide_startstop_t ide_floppy_do_request(ide_drive_t *drive,
 		pc = &floppy->queued_pc;
 		idefloppy_create_rw_cmd(drive, pc, rq, (unsigned long)block);
 		break;
-	case REQ_TYPE_DRV_PRIV:
-	case REQ_TYPE_ATA_SENSE:
+	case REQ_OP_DRV_PRIV:
+	case REQ_OP_ATA_SENSE:
 		pc = (struct ide_atapi_pc *)rq->special;
 		break;
-	case REQ_TYPE_BLOCK_PC:
+	case REQ_OP_BLOCK_PC:
 		pc = &floppy->queued_pc;
 		idefloppy_blockpc_cmd(floppy, pc, rq);
 		break;
@@ -286,7 +288,7 @@ static ide_startstop_t ide_floppy_do_request(ide_drive_t *drive,
 
 	cmd.rq = rq;
 
-	if (rq->cmd_type == REQ_TYPE_FS || blk_rq_bytes(rq)) {
+	if (!req_is_passthrough(rq) || blk_rq_bytes(rq)) {
 		ide_init_sg_cmd(&cmd, blk_rq_bytes(rq));
 		ide_map_sg(drive, &cmd);
 	}
@@ -296,7 +298,7 @@ static ide_startstop_t ide_floppy_do_request(ide_drive_t *drive,
 	return ide_floppy_issue_pc(drive, &cmd, pc);
 out_end:
 	drive->failed_pc = NULL;
-	if (rq->cmd_type != REQ_TYPE_FS && rq->errors == 0)
+	if (req_is_passthrough(rq) && rq->errors == 0)
 		rq->errors = -EIO;
 	ide_complete_rq(drive, -EIO, blk_rq_bytes(rq));
 	return ide_stopped;

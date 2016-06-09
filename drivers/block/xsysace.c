@@ -468,10 +468,14 @@ static struct request *ace_get_next_request(struct request_queue *q)
 	struct request *req;
 
 	while ((req = blk_peek_request(q)) != NULL) {
-		if (req->cmd_type == REQ_TYPE_FS)
+		switch (req->op) {
+		case REQ_OP_READ:
+		case REQ_OP_WRITE:
 			break;
-		blk_start_request(req);
-		__blk_end_request_all(req, -EIO);
+		default:
+			blk_start_request(req);
+			__blk_end_request_all(req, -EIO);
+		}
 	}
 	return req;
 }

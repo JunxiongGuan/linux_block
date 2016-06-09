@@ -301,36 +301,28 @@ static void osdblk_rq_fn(struct request_queue *q)
 		struct osdblk_request *orq;
 		struct osd_request *or;
 		struct bio *bio;
-		bool do_write, do_flush;
 
 		/* peek at request from block layer */
 		rq = blk_fetch_request(q);
 		if (!rq)
 			break;
 
-		/* filter out block requests we don't understand */
-		if (rq->cmd_type != REQ_TYPE_FS) {
-			blk_end_request_all(rq, 0);
-			continue;
-		}
-
-		/* deduce our operation (read, write, flush) */
-		/* I wish the block layer simplified cmd_type/cmd_flags/cmd[]
-		 * into a clearly defined set of RPC commands:
-		 * read, write, flush, scsi command, power mgmt req,
-		 * driver-specific, etc.
-		 */
-
-		do_flush = (req_op(rq) == REQ_OP_FLUSH);
-		do_write = (rq_data_dir(rq) == WRITE);
-
-		if (!do_flush) { /* osd_flush does not use a bio */
+		switch (rq->op) {
+		case REQ_OP_READ:
+		case REQ_OP_WRITE:
 			/* a bio clone to be passed down to OSD request */
 			bio = bio_chain_clone(rq->bio, GFP_ATOMIC);
 			if (!bio)
 				break;
-		} else
+		case REQ_OP_FLUSH:
+			/* osd_flush does not use a bio */
 			bio = NULL;
+			break;
+		default:
+			/* filter out block requests we don't understand */
+			blk_end_request_all(rq, 0);
+			continue;
+		}
 
 		/* alloc internal OSD request, for OSD command execution */
 		or = osd_start_request(osdev->osd, GFP_ATOMIC);
@@ -346,20 +338,26 @@ static void osdblk_rq_fn(struct request_queue *q)
 		orq->osdev = osdev;
 
 		/* init OSD command: flush, write or read */
-		if (do_flush)
+		switch (rq->op) {
+		case REQ_OP_FLUSH:
 			osd_req_flush_object(or, &osdev->obj,
 					     OSD_CDB_FLUSH_ALL, 0, 0);
-		else if (do_write)
+			break;
+		case REQ_OP_WRITE:
 			osd_req_write(or, &osdev->obj, blk_rq_pos(rq) * 512ULL,
 				      bio, blk_rq_bytes(rq));
-		else
+			break;
+		case REQ_OP_READ:
 			osd_req_read(or, &osdev->obj, blk_rq_pos(rq) * 512ULL,
 				     bio, blk_rq_bytes(rq));
+			break;
+		default:
+			BUG();
+		}
 
-		OSDBLK_DEBUG("%s 0x%x bytes at 0x%llx\n",
-			do_flush ? "flush" : do_write ?
-				"write" : "read", blk_rq_bytes(rq),
-			blk_rq_pos(rq) * 512ULL);
+
+		OSDBLK_DEBUG("%d 0x%x bytes at 0x%llx\n", rq->op,
+				blk_rq_bytes(rq), blk_rq_pos(rq) * 512ULL);
 
 		/* begin OSD command execution */
 		if (osd_async_op(or, osdblk_osd_complete, orq,

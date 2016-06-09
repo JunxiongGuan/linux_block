@@ -200,7 +200,7 @@ struct request *nvme_alloc_request(struct request_queue *q,
 	if (IS_ERR(req))
 		return req;
 
-	req->cmd_type = REQ_TYPE_DRV_PRIV;
+	req->op = REQ_OP_DRV_PRIV;
 	req->cmd_flags |= REQ_FAILFAST_DRIVER;
 	req->__data_len = 0;
 	req->__sector = (sector_t) -1;
@@ -303,18 +303,22 @@ static inline void nvme_setup_rw(struct nvme_ns *ns, struct request *req,
 int nvme_setup_cmd(struct nvme_ns *ns, struct request *req,
 		struct nvme_command *cmd)
 {
-	int ret = 0;
-
-	if (req->cmd_type == REQ_TYPE_DRV_PRIV)
+	switch (req->op) {
+	case REQ_OP_DRV_PRIV:
 		memcpy(cmd, req->cmd, sizeof(*cmd));
-	else if (req_op(req) == REQ_OP_FLUSH)
+		return 0;
+	case REQ_OP_FLUSH:
 		nvme_setup_flush(ns, cmd);
-	else if (req_op(req) == REQ_OP_DISCARD)
-		ret = nvme_setup_discard(ns, req, cmd);
-	else
+		return 0;
+	case REQ_OP_DISCARD:
+		return nvme_setup_discard(ns, req, cmd);
+	case REQ_OP_READ:
+	case REQ_OP_WRITE:
 		nvme_setup_rw(ns, req, cmd);
-
-	return ret;
+		return 0;
+	default:
+		return -EIO;
+	}
 }
 EXPORT_SYMBOL_GPL(nvme_setup_cmd);
 

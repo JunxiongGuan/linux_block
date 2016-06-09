@@ -895,7 +895,7 @@ static int sd_setup_flush_cmnd(struct scsi_cmnd *cmd)
 	return BLKPREP_OK;
 }
 
-static int sd_setup_read_write_cmnd(struct scsi_cmnd *SCpnt)
+static int sd_setup_read_write_cmnd(struct scsi_cmnd *SCpnt, bool write)
 {
 	struct request *rq = SCpnt->request;
 	struct scsi_device *sdp = SCpnt->device;
@@ -1003,24 +1003,18 @@ static int sd_setup_read_write_cmnd(struct scsi_cmnd *SCpnt)
 			this_count = this_count >> 3;
 		}
 	}
-	if (rq_data_dir(rq) == WRITE) {
-		SCpnt->cmnd[0] = WRITE_6;
 
+	if (write) {
+		SCpnt->cmnd[0] = WRITE_6;
 		if (blk_integrity_rq(rq))
 			sd_dif_prepare(SCpnt);
-
-	} else if (rq_data_dir(rq) == READ) {
-		SCpnt->cmnd[0] = READ_6;
 	} else {
-		scmd_printk(KERN_ERR, SCpnt, "Unknown command %llu,%llx\n",
-			    req_op(rq), (unsigned long long) rq->cmd_flags);
-		goto out;
+		SCpnt->cmnd[0] = READ_6;
 	}
 
 	SCSI_LOG_HLQUEUE(2, scmd_printk(KERN_INFO, SCpnt,
 					"%s %d/%u 512 byte blocks.\n",
-					(rq_data_dir(rq) == WRITE) ?
-					"writing" : "reading", this_count,
+					write ? "writing" : "reading", this_count,
 					blk_rq_sectors(rq)));
 
 	dix = scsi_prot_sg_count(SCpnt);
@@ -1043,7 +1037,7 @@ static int sd_setup_read_write_cmnd(struct scsi_cmnd *SCpnt)
 		memset(SCpnt->cmnd, 0, SCpnt->cmd_len);
 		SCpnt->cmnd[0] = VARIABLE_LENGTH_CMD;
 		SCpnt->cmnd[7] = 0x18;
-		SCpnt->cmnd[9] = (rq_data_dir(rq) == READ) ? READ_32 : WRITE_32;
+		SCpnt->cmnd[9] = write ? WRITE_32 : READ_32;
 		SCpnt->cmnd[10] = protect | ((rq->cmd_flags & REQ_FUA) ? 0x8 : 0);
 
 		/* LBA */
@@ -1146,8 +1140,9 @@ static int sd_init_command(struct scsi_cmnd *cmd)
 	case REQ_OP_FLUSH:
 		return sd_setup_flush_cmnd(cmd);
 	case REQ_OP_READ:
+		return sd_setup_read_write_cmnd(cmd, false);
 	case REQ_OP_WRITE:
-		return sd_setup_read_write_cmnd(cmd);
+		return sd_setup_read_write_cmnd(cmd, true);
 	default:
 		BUG();
 	}
@@ -1732,7 +1727,7 @@ static unsigned int sd_completed_bytes(struct scsi_cmnd *scmd)
 	unsigned int transferred = scsi_bufflen(scmd) - scsi_get_resid(scmd);
 	unsigned int good_bytes;
 
-	if (scmd->request->cmd_type != REQ_TYPE_FS)
+	if (req_is_passthrough(scmd->request))
 		return 0;
 
 	info_valid = scsi_get_sense_info_fld(scmd->sense_buffer,

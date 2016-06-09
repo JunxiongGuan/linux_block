@@ -711,7 +711,7 @@ static void blk_add_trace_rq(struct request_queue *q, struct request *rq,
 	if (likely(!bt))
 		return;
 
-	if (rq->cmd_type == REQ_TYPE_BLOCK_PC) {
+	if (rq->op == REQ_OP_SCSI) {
 		what |= BLK_TC_ACT(BLK_TC_PC);
 		__blk_add_trace(bt, 0, nr_bytes, req_op(rq), rq->cmd_flags,
 				what, rq->errors, rq->cmd_len, rq->cmd);
@@ -971,7 +971,7 @@ void blk_add_driver_data(struct request_queue *q,
 	if (likely(!bt))
 		return;
 
-	if (rq->cmd_type == REQ_TYPE_BLOCK_PC)
+	if (rq->op == REQ_OP_SCSI)
 		__blk_add_trace(bt, 0, blk_rq_bytes(rq), 0, 0,
 				BLK_TA_DRV_DATA, rq->errors, len, data);
 	else
@@ -1757,7 +1757,7 @@ void blk_dump_cmd(char *buf, struct request *rq)
 	int len = rq->cmd_len;
 	unsigned char *cmd = rq->cmd;
 
-	if (rq->cmd_type != REQ_TYPE_BLOCK_PC) {
+	if (rq->op != REQ_OP_SCSI) {
 		buf[0] = '\0';
 		return;
 	}

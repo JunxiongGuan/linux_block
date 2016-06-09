@@ -280,16 +280,26 @@ static int nbd_send_req(struct nbd_device *nbd, struct request *req)
 	unsigned long size = blk_rq_bytes(req);
 	u32 type;
 
-	if (req->cmd_type == REQ_TYPE_DRV_PRIV)
+	switch (req->op) {
+	case REQ_OP_DRV_PRIV:
 		type = NBD_CMD_DISC;
-	else if (req_op(req) == REQ_OP_DISCARD)
+		break;
+	case REQ_OP_DISCARD:
 		type = NBD_CMD_TRIM;
-	else if (req_op(req) == REQ_OP_FLUSH)
+		break;
+	case REQ_OP_FLUSH:
 		type = NBD_CMD_FLUSH;
-	else if (rq_data_dir(req) == WRITE)
+		break;
+	case REQ_OP_WRITE:
 		type = NBD_CMD_WRITE;
-	else
+		break;
+	case REQ_OP_READ:
 		type = NBD_CMD_READ;
+		break;
+	default:
+		WARN_ON_ONCE(1);
+		return -EIO;
+	}
 
 	memset(&request, 0, sizeof(request));
 	request.magic = htonl(NBD_REQUEST_MAGIC);
@@ -521,7 +531,7 @@ static void nbd_clear_que(struct nbd_device *nbd)
 
 static void nbd_handle_req(struct nbd_device *nbd, struct request *req)
 {
-	if (req->cmd_type != REQ_TYPE_FS)
+	if (req_is_passthrough(req))
 		goto error_out;
 
 	if (rq_data_dir(req) == WRITE &&
@@ -718,7 +728,7 @@ static int __nbd_ioctl(struct block_device *bdev, struct nbd_device *nbd,
 		fsync_bdev(bdev);
 		mutex_lock(&nbd->tx_lock);
 		blk_rq_init(NULL, &sreq);
-		sreq.cmd_type = REQ_TYPE_DRV_PRIV;
+		sreq.op = REQ_OP_DRV_PRIV;
 
 		/* Check again after getting mutex back.  */
 		if (!nbd->sock)

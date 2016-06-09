@@ -444,7 +444,7 @@ static char *pd_buf;		/* buffer for request in progress */
 
 static enum action do_pd_io_start(void)
 {
-	if (pd_req->cmd_type == REQ_TYPE_DRV_PRIV) {
+	if (pd_req->op == REQ_OP_DRV_PRIV) {
 		phase = pd_special;
 		return pd_special();
 	}
@@ -727,7 +727,7 @@ static int pd_special_command(struct pd_unit *disk,
 	if (IS_ERR(rq))
 		return PTR_ERR(rq);
 
-	rq->cmd_type = REQ_TYPE_DRV_PRIV;
+	rq->op = REQ_OP_DRV_PRIV;
 	rq->special = func;
 
 	err = blk_execute_rq(disk->gd->queue, disk->gd, rq, 0);

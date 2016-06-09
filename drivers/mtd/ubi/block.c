@@ -323,11 +323,8 @@ static int ubiblock_queue_rq(struct blk_mq_hw_ctx *hctx,
 	struct ubiblock *dev = hctx->queue->queuedata;
 	struct ubiblock_pdu *pdu = blk_mq_rq_to_pdu(req);
 
-	if (req->cmd_type != REQ_TYPE_FS)
+	if (req->op != REQ_OP_READ)
 		return BLK_MQ_RQ_QUEUE_ERROR;
-
-	if (rq_data_dir(req) != READ)
-		return BLK_MQ_RQ_QUEUE_ERROR; /* Write not implemented */
 
 	ubi_sgl_init(&pdu->usgl);
 	queue_work(dev->wq, &pdu->work);

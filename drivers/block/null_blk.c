@@ -452,7 +452,7 @@ static int null_lnvm_submit_io(struct nvm_dev *dev, struct nvm_rq *rqd)
 	if (IS_ERR(rq))
 		return -ENOMEM;
 
-	rq->cmd_type = REQ_TYPE_DRV_PRIV;
+	rq->op = REQ_OP_DRV_PRIV;
 	rq->__sector = bio->bi_iter.bi_sector;
 	rq->ioprio = bio_prio(bio);
 

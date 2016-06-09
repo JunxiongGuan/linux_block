@@ -670,15 +670,17 @@ static void mg_request_poll(struct request_queue *q)
 				break;
 		}
 
-		if (unlikely(host->req->cmd_type != REQ_TYPE_FS)) {
-			mg_end_request_cur(host, -EIO);
-			continue;
-		}
-
-		if (rq_data_dir(host->req) == READ)
+		switch (host->req->op) {
+		case REQ_OP_READ:
 			mg_read(host->req);
-		else
+			break;
+		case REQ_OP_WRITE:
 			mg_write(host->req);
+			break;
+		default:
+			mg_end_request_cur(host, -EIO);
+			break;
+		}
 	}
 }
 
@@ -753,7 +755,7 @@ static void mg_request(struct request_queue *q)
 			continue;
 		}
 
-		if (unlikely(req->cmd_type != REQ_TYPE_FS)) {
+		if (unlikely(!req_is_passthrough(req))) {
 			mg_end_request_cur(host, -EIO);
 			continue;
 		}

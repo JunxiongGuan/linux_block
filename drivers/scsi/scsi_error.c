@@ -1106,7 +1106,7 @@ static int scsi_request_sense(struct scsi_cmnd *scmd)
 
 static int scsi_eh_action(struct scsi_cmnd *scmd, int rtn)
 {
-	if (scmd->request->cmd_type != REQ_TYPE_BLOCK_PC) {
+	if (scmd->request->op != REQ_OP_SCSI) {
 		struct scsi_driver *sdrv = scsi_cmd_to_driver(scmd);
 		if (sdrv->eh_action)
 			rtn = sdrv->eh_action(scmd, rtn);
@@ -1747,7 +1747,7 @@ check_type:
 	 * the check condition was retryable.
 	 */
 	if (scmd->request->cmd_flags & REQ_FAILFAST_DEV ||
-	    scmd->request->cmd_type == REQ_TYPE_BLOCK_PC)
+	    scmd->request->op == REQ_OP_SCSI)
 		return 1;
 	else
 		return 0;

@@ -114,7 +114,7 @@ struct compat_blk_user_trace_setup {
 
 static inline int blk_cmd_buf_len(struct request *rq)
 {
-	return (rq->cmd_type == REQ_TYPE_BLOCK_PC) ? rq->cmd_len * 3 : 1;
+	return (rq->op == REQ_OP_SCSI) ? rq->cmd_len * 3 : 1;
 }
 
 extern void blk_dump_cmd(char *buf, struct request *rq);

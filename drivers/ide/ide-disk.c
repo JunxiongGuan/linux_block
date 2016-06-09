@@ -184,7 +184,7 @@ static ide_startstop_t ide_do_rw_disk(ide_drive_t *drive, struct request *rq,
 	ide_hwif_t *hwif = drive->hwif;
 
 	BUG_ON(drive->dev_flags & IDE_DFLAG_BLOCKED);
-	BUG_ON(rq->cmd_type != REQ_TYPE_FS);
+	BUG_ON(req_is_passthrough(rq));
 
 	ledtrig_ide_activity();
 
@@ -453,7 +453,7 @@ static int idedisk_prep_fn(struct request_queue *q, struct request *rq)
 	cmd->tf_flags = IDE_TFLAG_DYN;
 	cmd->protocol = ATA_PROT_NODATA;
 
-	rq->cmd_type = REQ_TYPE_ATA_TASKFILE;
+	rq->op = REQ_OP_ATA_TASKFILE;
 	rq->special = cmd;
 	cmd->rq = rq;
 
@@ -478,7 +478,7 @@ static int set_multcount(ide_drive_t *drive, int arg)
 		return -EBUSY;
 
 	rq = blk_get_request(drive->queue, READ, __GFP_RECLAIM);
-	rq->cmd_type = REQ_TYPE_ATA_TASKFILE;
+	rq->op = REQ_OP_ATA_TASKFILE;
 
 	drive->mult_req = arg;
 	drive->special_flags |= IDE_SFLAG_SET_MULTMODE;

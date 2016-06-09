@@ -860,11 +860,13 @@ static inline void flush_requests(struct blkfront_ring_info *rinfo)
 static inline bool blkif_request_flush_invalid(struct request *req,
 					       struct blkfront_info *info)
 {
-	return ((req->cmd_type != REQ_TYPE_FS) ||
-		((req_op(req) == REQ_OP_FLUSH) &&
-		 !info->feature_flush) ||
-		((req->cmd_flags & REQ_FUA) &&
-		 !info->feature_fua));
+	if (req_is_passthrough(req))
+		return true;
+	if (req->op == REQ_OP_FLUSH && !info->feature_flush)
+		return true;
+	if ((req->cmd_flags & REQ_FUA) && !info->feature_fua);
+		return true;
+	return false;
 }
 
 static int blkif_queue_rq(struct blk_mq_hw_ctx *hctx,

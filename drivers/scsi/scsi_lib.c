@@ -520,7 +520,7 @@ void scsi_run_host_queues(struct Scsi_Host *shost)
 
 static void scsi_uninit_cmd(struct scsi_cmnd *cmd)
 {
-	if (cmd->request->cmd_type == REQ_TYPE_FS) {
+	if (!req_is_passthrough(cmd->request)) {
 		struct scsi_driver *drv = scsi_cmd_to_driver(cmd);
 
 		if (drv->uninit_command)
@@ -745,7 +745,7 @@ void scsi_io_completion(struct scsi_cmnd *cmd, unsigned int good_bytes)
 			sense_deferred = scsi_sense_is_deferred(&sshdr);
 	}
 
-	if (req->cmd_type == REQ_TYPE_BLOCK_PC) { /* SG_IO ioctl from block level */
+	if (req->op == REQ_OP_SCSI) {
 		if (result) {
 			if (sense_valid && req->sense) {
 				/*
@@ -789,7 +789,7 @@ void scsi_io_completion(struct scsi_cmnd *cmd, unsigned int good_bytes)
 		error = __scsi_error_from_host_byte(cmd, result);
 	}
 
-	/* no bidi support for !REQ_TYPE_BLOCK_PC yet */
+	/* no bidi support for !REQ_OP_SCSI */
 	BUG_ON(blk_bidi_rq(req));
 
 	/*
@@ -1157,8 +1157,7 @@ static int scsi_setup_blk_pc_cmnd(struct scsi_device *sdev, struct request *req)
 }
 
 /*
- * Setup a REQ_TYPE_FS command.  These are simple request from filesystems
- * that still need to be translated to SCSI CDBs from the ULD.
+ * Setup a command that still need to be translated to SCSI CDBs from the ULD.
  */
 static int scsi_setup_fs_cmnd(struct scsi_device *sdev, struct request *req)
 {
@@ -1185,10 +1184,14 @@ static int scsi_setup_cmnd(struct scsi_device *sdev, struct request *req)
 	else
 		cmd->sc_data_direction = DMA_FROM_DEVICE;
 
-	switch (req->cmd_type) {
-	case REQ_TYPE_FS:
+	switch (req->op) {
+	case REQ_OP_READ:
+	case REQ_OP_WRITE:
+	case REQ_OP_FLUSH:
+	case REQ_OP_DISCARD:
+	case REQ_OP_WRITE_SAME:
 		return scsi_setup_fs_cmnd(sdev, req);
-	case REQ_TYPE_BLOCK_PC:
+	case REQ_OP_SCSI:
 		return scsi_setup_blk_pc_cmnd(sdev, req);
 	default:
 		return BLKPREP_KILL;

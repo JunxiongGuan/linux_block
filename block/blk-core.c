@@ -160,7 +160,7 @@ void blk_dump_rq_flags(struct request *rq, char *msg)
 	int bit;
 
 	printk(KERN_INFO "%s: dev %s: type=%x, flags=%llx\n", msg,
-		rq->rq_disk ? rq->rq_disk->disk_name : "?", rq->cmd_type,
+		rq->rq_disk ? rq->rq_disk->disk_name : "?", rq->op,
 		(unsigned long long) rq->cmd_flags);
 
 	printk(KERN_INFO "  sector %llu, nr/cnr %u/%u\n",
@@ -169,7 +169,7 @@ void blk_dump_rq_flags(struct request *rq, char *msg)
 	printk(KERN_INFO "  bio %p, biotail %p, len %u\n",
 	       rq->bio, rq->biotail, blk_rq_bytes(rq));
 
-	if (rq->cmd_type == REQ_TYPE_BLOCK_PC) {
+	if (rq->op == REQ_OP_SCSI) {
 		printk(KERN_INFO "  cdb: ");
 		for (bit = 0; bit < BLK_MAX_CDB; bit++)
 			printk("%02x ", rq->cmd[bit]);
@@ -1151,7 +1151,9 @@ static struct request *__get_request(struct request_list *rl, int op,
 
 	blk_rq_init(q, rq);
 	blk_rq_set_rl(rq, rl);
-	req_set_op_attrs(rq, op, op_flags | REQ_ALLOCED);
+
+	rq->op = op;
+	rq->cmd_flags = op_flags | REQ_ALLOCED;
 
 	/* init elvpriv */
 	if (op_flags & REQ_ELVPRIV) {
@@ -1376,7 +1378,7 @@ EXPORT_SYMBOL(blk_make_request);
  */
 void blk_rq_set_block_pc(struct request *rq)
 {
-	rq->cmd_type = REQ_TYPE_BLOCK_PC;
+	rq->op = REQ_OP_SCSI;
 	rq->__data_len = 0;
 	rq->__sector = (sector_t) -1;
 	rq->bio = rq->biotail = NULL;
@@ -1701,8 +1703,6 @@ out:
 
 void init_request_from_bio(struct request *req, struct bio *bio)
 {
-	req->cmd_type = REQ_TYPE_FS;
-
 	req->cmd_flags |= bio->bi_rw & REQ_COMMON_MASK;
 	if (bio->bi_rw & REQ_RAHEAD)
 		req->cmd_flags |= REQ_FAILFAST_MASK;
@@ -2586,6 +2586,7 @@ EXPORT_SYMBOL(blk_fetch_request);
  **/
 bool blk_update_request(struct request *req, int error, unsigned int nr_bytes)
 {
+	bool print_error = false;
 	int total_bytes;
 
 	trace_block_rq_complete(req->q, req, nr_bytes);
@@ -2601,11 +2602,13 @@ bool blk_update_request(struct request *req, int error, unsigned int nr_bytes)
 	 * TODO: tj: This is too subtle.  It would be better to let
 	 * low level drivers do what they see fit.
 	 */
-	if (req->cmd_type == REQ_TYPE_FS)
+	if (!req_is_passthrough(req)) {
 		req->errors = 0;
+		if (error && !(req->cmd_flags & REQ_QUIET))
+			print_error = true;
+	}
 
-	if (error && req->cmd_type == REQ_TYPE_FS &&
-	    !(req->cmd_flags & REQ_QUIET)) {
+	if (print_error) {
 		char *error_type;
 
 		switch (error) {
@@ -2674,7 +2677,7 @@ bool blk_update_request(struct request *req, int error, unsigned int nr_bytes)
 	req->__data_len -= total_bytes;
 
 	/* update sector only for requests with clear definition of sector */
-	if (req->cmd_type == REQ_TYPE_FS)
+	if (!req_is_passthrough(req))
 		req->__sector += total_bytes >> 9;
 
 	/* mixed attributes always follow the first bio */
@@ -2747,7 +2750,7 @@ void blk_finish_request(struct request *req, int error)
 
 	BUG_ON(blk_queued_rq(req));
 
-	if (unlikely(laptop_mode) && req->cmd_type == REQ_TYPE_FS)
+	if (unlikely(laptop_mode) && !req_is_passthrough(req))
 		laptop_io_completion(&req->q->backing_dev_info);
 
 	blk_delete_timer(req);
@@ -2987,7 +2990,7 @@ EXPORT_SYMBOL_GPL(__blk_end_request_err);
 void blk_rq_bio_prep(struct request_queue *q, struct request *rq,
 		     struct bio *bio)
 {
-	req_set_op(rq, bio_op(bio));
+	rq->op = bio_op(bio);
 
 	if (bio_has_data(bio))
 		rq->nr_phys_segments = bio_phys_segments(q, bio);
@@ -3072,9 +3075,8 @@ EXPORT_SYMBOL_GPL(blk_rq_unprep_clone);
 static void __blk_rq_prep_clone(struct request *dst, struct request *src)
 {
 	dst->cpu = src->cpu;
-	req_set_op_attrs(dst, req_op(src),
-			 (src->cmd_flags & REQ_CLONE_MASK) | REQ_NOMERGE);
-	dst->cmd_type = src->cmd_type;
+	dst->op = src->op;
+	dst->cmd_flags = (src->cmd_flags & REQ_CLONE_MASK) | REQ_NOMERGE;
 	dst->__sector = blk_rq_pos(src);
 	dst->__data_len = blk_rq_bytes(src);
 	dst->nr_phys_segments = src->nr_phys_segments;

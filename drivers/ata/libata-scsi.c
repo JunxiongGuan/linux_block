@@ -1187,7 +1187,7 @@ static void ata_scsi_sdev_config(struct scsi_device *sdev)
  */
 static int atapi_drain_needed(struct request *rq)
 {
-	if (likely(rq->cmd_type != REQ_TYPE_BLOCK_PC))
+	if (likely(rq->op != REQ_OP_SCSI))
 		return 0;
 
 	if (!blk_rq_bytes(rq) || op_is_write(req_op(rq)))

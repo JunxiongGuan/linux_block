@@ -249,7 +249,11 @@ enum req_op {
 	REQ_OP_SECURE_ERASE,	/* request to securely erase sectors */
 	REQ_OP_WRITE_SAME,	/* write same block many times */
 	REQ_OP_FLUSH,		/* request for cache flush */
+	REQ_OP_SCSI,		/* scsi command */
+	REQ_OP_DRV_PRIV,	/* driver defined types from here */
 };
+
+#define req_is_passthrough(rq)	((rq)->op < REQ_OP_SCSI)
 
 #define REQ_OP_BITS 3
 

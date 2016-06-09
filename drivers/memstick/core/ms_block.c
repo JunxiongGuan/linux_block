@@ -2002,13 +2002,16 @@ static int msb_bd_getgeo(struct block_device *bdev,
 
 static int msb_prepare_req(struct request_queue *q, struct request *req)
 {
-	if (req->cmd_type != REQ_TYPE_FS &&
-				req->cmd_type != REQ_TYPE_BLOCK_PC) {
+	switch (req->op) {
+	case REQ_OP_READ:
+	case REQ_OP_WRITE:
+	case REQ_OP_SCSI: /* XXX: doesn't actually look supported.. */
+		req->cmd_flags |= REQ_DONTPREP;
+		return BLKPREP_OK;
+	default:
 		blk_dump_rq_flags(req, "MS unsupported request");
 		return BLKPREP_KILL;
 	}
-	req->cmd_flags |= REQ_DONTPREP;
-	return BLKPREP_OK;
 }
 
 static void msb_submit_req(struct request_queue *q)

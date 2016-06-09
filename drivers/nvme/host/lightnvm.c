@@ -511,7 +511,7 @@ static int nvme_nvm_submit_io(struct nvm_dev *dev, struct nvm_rq *rqd)
 		return -ENOMEM;
 	}
 
-	rq->cmd_type = REQ_TYPE_DRV_PRIV;
+	rq->op = REQ_OP_DRV_PRIV;
 	rq->ioprio = bio_prio(bio);
 
 	if (bio_has_data(bio))

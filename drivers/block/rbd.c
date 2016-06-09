@@ -3279,19 +3279,21 @@ static void rbd_queue_workfn(struct work_struct *work)
 	u64 mapping_size;
 	int result;
 
-	if (rq->cmd_type != REQ_TYPE_FS) {
-		dout("%s: non-fs request type %d\n", __func__,
-			(int) rq->cmd_type);
+	switch (rq->op) {
+	case REQ_OP_DISCARD:
+		op_type = OBJ_OP_DISCARD;
+		break;
+	case REQ_OP_WRITE:
+		op_type = OBJ_OP_WRITE;
+		break;
+	case REQ_OP_READ:
+		op_type = OBJ_OP_READ;
+		break;
+	default:
+		dout("%s: non-fs request type %d\n", __func__, rq->op);
 		result = -EIO;
 		goto err;
 	}
-
-	if (req_op(rq) == REQ_OP_DISCARD)
-		op_type = OBJ_OP_DISCARD;
-	else if (req_op(rq) == REQ_OP_WRITE)
-		op_type = OBJ_OP_WRITE;
-	else
-		op_type = OBJ_OP_READ;
 
 	/* Ignore/skip any zero-length requests */
 

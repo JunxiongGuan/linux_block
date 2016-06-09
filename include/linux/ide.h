@@ -39,18 +39,18 @@
 
 struct device;
 
-/* IDE-specific values for req->cmd_type */
+/* IDE-specific values for req->op */
 enum ata_cmd_type_bits {
-	REQ_TYPE_ATA_TASKFILE = REQ_TYPE_DRV_PRIV + 1,
-	REQ_TYPE_ATA_PC,
-	REQ_TYPE_ATA_SENSE,	/* sense request */
-	REQ_TYPE_ATA_PM_SUSPEND,/* suspend request */
-	REQ_TYPE_ATA_PM_RESUME,	/* resume request */
+	REQ_OP_ATA_TASKFILE = REQ_OP_DRV_PRIV + 1,
+	REQ_OP_ATA_PC,
+	REQ_OP_ATA_SENSE,	/* sense request */
+	REQ_OP_ATA_PM_SUSPEND,/* suspend request */
+	REQ_OP_ATA_PM_RESUME,	/* resume request */
 };
 
 #define ata_pm_request(rq)	\
-	((rq)->cmd_type == REQ_TYPE_ATA_PM_SUSPEND || \
-	 (rq)->cmd_type == REQ_TYPE_ATA_PM_RESUME)
+	((rq)->op == REQ_OP_ATA_PM_SUSPEND || \
+	 (rq)->op == REQ_OP_ATA_PM_RESUME)
 
 /* Error codes returned in rq->errors to the higher part of the driver. */
 enum {
@@ -1328,7 +1328,7 @@ struct ide_port_info {
 };
 
 /*
- * State information carried for REQ_TYPE_ATA_PM_SUSPEND and REQ_TYPE_ATA_PM_RESUME
+ * State information carried for REQ_OP_ATA_PM_SUSPEND and REQ_OP_ATA_PM_RESUME
  * requests.
  */
 struct ide_pm_state {

@@ -1853,7 +1853,7 @@ static void cciss_softirq_done(struct request *rq)
 	dev_dbg(&h->pdev->dev, "Done with %p\n", rq);
 
 	/* set the residual count for pc requests */
-	if (rq->cmd_type == REQ_TYPE_BLOCK_PC)
+	if (rq->op == REQ_OP_SCSI)
 		rq->resid_len = c->err_info->ResidualCnt;
 
 	blk_end_request_all(rq, (rq->errors == 0) ? 0 : -EIO);
@@ -3076,7 +3076,7 @@ static inline int evaluate_target_status(ctlr_info_t *h,
 	driver_byte = DRIVER_OK;
 	msg_byte = cmd->err_info->CommandStatus; /* correct?  seems too device specific */
 
-	if (cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC)
+	if (cmd->rq->op == REQ_OP_SCSI)
 		host_byte = DID_PASSTHROUGH;
 	else
 		host_byte = DID_OK;
@@ -3085,7 +3085,7 @@ static inline int evaluate_target_status(ctlr_info_t *h,
 		host_byte, driver_byte);
 
 	if (cmd->err_info->ScsiStatus != SAM_STAT_CHECK_CONDITION) {
-		if (cmd->rq->cmd_type != REQ_TYPE_BLOCK_PC)
+		if (cmd->rq->o != REQ_OP_SCSI)
 			dev_warn(&h->pdev->dev, "cmd %p "
 			       "has SCSI Status 0x%x\n",
 			       cmd, cmd->err_info->ScsiStatus);
@@ -3096,16 +3096,16 @@ static inline int evaluate_target_status(ctlr_info_t *h,
 	sense_key = 0xf & cmd->err_info->SenseInfo[2];
 	/* no status or recovered error */
 	if (((sense_key == 0x0) || (sense_key == 0x1)) &&
-	    (cmd->rq->cmd_type != REQ_TYPE_BLOCK_PC))
+	    (cmd->rq->op != REQ_OP_SCSI))
 		error_value = 0;
 
 	if (check_for_unit_attention(h, cmd)) {
-		*retry_cmd = !(cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC);
+		*retry_cmd = !(cmd->rq->op == REQ_OP_SCSI);
 		return 0;
 	}
 
 	/* Not SG_IO or similar? */
-	if (cmd->rq->cmd_type != REQ_TYPE_BLOCK_PC) {
+	if (cmd->rq->op != REQ_OP_SCSI) {
 		if (error_value != 0)
 			dev_warn(&h->pdev->dev, "cmd %p has CHECK CONDITION"
 			       " sense key = 0x%x\n", cmd, sense_key);
@@ -3147,7 +3147,7 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 		rq->errors = evaluate_target_status(h, cmd, &retry_cmd);
 		break;
 	case CMD_DATA_UNDERRUN:
-		if (cmd->rq->cmd_type == REQ_TYPE_FS) {
+		if (!req_is_passthrough(cmd->rq)) {
 			dev_warn(&h->pdev->dev, "cmd %p has"
 			       " completed with data underrun "
 			       "reported\n", cmd);
@@ -3155,7 +3155,7 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 		}
 		break;
 	case CMD_DATA_OVERRUN:
-		if (cmd->rq->cmd_type == REQ_TYPE_FS)
+		if (!req_is_passthrough(cmd->rq))
 			dev_warn(&h->pdev->dev, "cciss: cmd %p has"
 			       " completed with data overrun "
 			       "reported\n", cmd);
@@ -3165,7 +3165,7 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 		       "reported invalid\n", cmd);
 		rq->errors = make_status_bytes(SAM_STAT_GOOD,
 			cmd->err_info->CommandStatus, DRIVER_OK,
-			(cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC) ?
+			(cmd->rq->op == REQ_OP_SCSI) ?
 				DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_PROTOCOL_ERR:
@@ -3173,7 +3173,7 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 		       "protocol error\n", cmd);
 		rq->errors = make_status_bytes(SAM_STAT_GOOD,
 			cmd->err_info->CommandStatus, DRIVER_OK,
-			(cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC) ?
+			(cmd->rq->op == REQ_OP_SCSI) ?
 				DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_HARDWARE_ERR:
@@ -3181,7 +3181,7 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 		       " hardware error\n", cmd);
 		rq->errors = make_status_bytes(SAM_STAT_GOOD,
 			cmd->err_info->CommandStatus, DRIVER_OK,
-			(cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC) ?
+			(cmd->rq->op == REQ_OP_SCSI) ?
 				DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_CONNECTION_LOST:
@@ -3189,7 +3189,7 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 		       "connection lost\n", cmd);
 		rq->errors = make_status_bytes(SAM_STAT_GOOD,
 			cmd->err_info->CommandStatus, DRIVER_OK,
-			(cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC) ?
+			(cmd->rq->op == REQ_OP_SCSI) ?
 				DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_ABORTED:
@@ -3197,7 +3197,7 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 		       "aborted\n", cmd);
 		rq->errors = make_status_bytes(SAM_STAT_GOOD,
 			cmd->err_info->CommandStatus, DRIVER_OK,
-			(cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC) ?
+			(cmd->rq->op == REQ_OP_SCSI) ?
 				DID_PASSTHROUGH : DID_ABORT);
 		break;
 	case CMD_ABORT_FAILED:
@@ -3205,7 +3205,7 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 		       "abort failed\n", cmd);
 		rq->errors = make_status_bytes(SAM_STAT_GOOD,
 			cmd->err_info->CommandStatus, DRIVER_OK,
-			(cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC) ?
+			(cmd->rq->op == REQ_OP_SCSI) ?
 				DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_UNSOLICITED_ABORT:
@@ -3220,21 +3220,21 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 				"%p retried too many times\n", cmd);
 		rq->errors = make_status_bytes(SAM_STAT_GOOD,
 			cmd->err_info->CommandStatus, DRIVER_OK,
-			(cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC) ?
+			(cmd->rq->op == REQ_OP_SCSI) ?
 				DID_PASSTHROUGH : DID_ABORT);
 		break;
 	case CMD_TIMEOUT:
 		dev_warn(&h->pdev->dev, "cmd %p timedout\n", cmd);
 		rq->errors = make_status_bytes(SAM_STAT_GOOD,
 			cmd->err_info->CommandStatus, DRIVER_OK,
-			(cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC) ?
+			(cmd->rq->op == REQ_OP_SCSI) ?
 				DID_PASSTHROUGH : DID_ERROR);
 		break;
 	case CMD_UNABORTABLE:
 		dev_warn(&h->pdev->dev, "cmd %p unabortable\n", cmd);
 		rq->errors = make_status_bytes(SAM_STAT_GOOD,
 			cmd->err_info->CommandStatus, DRIVER_OK,
-			cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC ?
+			cmd->rq->op == REQ_OP_SCSI ?
 				DID_PASSTHROUGH : DID_ERROR);
 		break;
 	default:
@@ -3243,7 +3243,7 @@ static inline void complete_command(ctlr_info_t *h, CommandList_struct *cmd,
 		       cmd->err_info->CommandStatus);
 		rq->errors = make_status_bytes(SAM_STAT_GOOD,
 			cmd->err_info->CommandStatus, DRIVER_OK,
-			(cmd->rq->cmd_type == REQ_TYPE_BLOCK_PC) ?
+			(cmd->rq->op == REQ_OP_SCSI) ?
 				DID_PASSTHROUGH : DID_ERROR);
 	}
 
@@ -3396,7 +3396,9 @@ static void do_cciss_request(struct request_queue *q)
 		c->Header.SGList = h->max_cmd_sgentries;
 	set_performant_mode(h, c);
 
-	if (likely(creq->cmd_type == REQ_TYPE_FS)) {
+	switch (creq->op) {
+	case REQ_OP_READ:
+	case REQ_OP_WRITE:
 		if(h->cciss_read == CCISS_READ_10) {
 			c->Request.CDB[1] = 0;
 			c->Request.CDB[2] = (start_blk >> 24) & 0xff; /* MSB */
@@ -3426,10 +3428,12 @@ static void do_cciss_request(struct request_queue *q)
 			c->Request.CDB[13]= blk_rq_sectors(creq) & 0xff;
 			c->Request.CDB[14] = c->Request.CDB[15] = 0;
 		}
-	} else if (creq->cmd_type == REQ_TYPE_BLOCK_PC) {
+		break;
+	case REQ_OP_SCSI:
 		c->Request.CDBLen = creq->cmd_len;
 		memcpy(c->Request.CDB, creq->cmd, BLK_MAX_CDB);
-	} else {
+		break;
+	default:
 		dev_warn(&h->pdev->dev, "bad request type %d\n",
 			creq->cmd_type);
 		BUG();

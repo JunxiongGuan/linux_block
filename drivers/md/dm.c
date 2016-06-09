@@ -1187,7 +1187,7 @@ static void dm_end_request(struct request *clone, int error)
 	struct mapped_device *md = tio->md;
 	struct request *rq = tio->orig;
 
-	if (rq->cmd_type == REQ_TYPE_BLOCK_PC) {
+	if (rq->op == REQ_OP_SCSI) {
 		rq->errors = clone->errors;
 		rq->resid_len = clone->resid_len;
 

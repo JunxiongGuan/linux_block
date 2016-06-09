@@ -571,7 +571,7 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	 */
 	if (ns && ns->ms && !blk_integrity_rq(req)) {
 		if (!(ns->pi_type && ns->ms == 8) &&
-					req->cmd_type != REQ_TYPE_DRV_PRIV) {
+					req->op != REQ_OP_DRV_PRIV) {
 			blk_mq_end_request(req, -EFAULT);
 			return BLK_MQ_RQ_QUEUE_OK;
 		}
@@ -627,7 +627,7 @@ static void nvme_complete_rq(struct request *req)
 			return;
 		}
 
-		if (req->cmd_type == REQ_TYPE_DRV_PRIV)
+		if (req->op == REQ_OP_DRV_PRIV)
 			error = req->errors;
 		else
 			error = nvme_error_status(req->errors);
@@ -688,7 +688,7 @@ static void __nvme_process_cq(struct nvme_queue *nvmeq, unsigned int *tag)
 		}
 
 		req = blk_mq_tag_to_rq(*nvmeq->tags, cqe.command_id);
-		if (req->cmd_type == REQ_TYPE_DRV_PRIV && req->special)
+		if (req->op == REQ_OP_DRV_PRIV && req->special)
 			memcpy(req->special, &cqe, sizeof(cqe));
 		blk_mq_complete_request(req, le16_to_cpu(cqe.status) >> 1);
 

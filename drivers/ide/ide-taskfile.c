@@ -431,7 +431,7 @@ int ide_raw_taskfile(ide_drive_t *drive, struct ide_cmd *cmd, u8 *buf,
 	int rw = !(cmd->tf_flags & IDE_TFLAG_WRITE) ? READ : WRITE;
 
 	rq = blk_get_request(drive->queue, rw, __GFP_RECLAIM);
-	rq->cmd_type = REQ_TYPE_ATA_TASKFILE;
+	rq->op = REQ_OP_ATA_TASKFILE;
 
 	/*
 	 * (ks) We transfer currently only whole sectors.
