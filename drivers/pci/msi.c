@@ -568,6 +568,7 @@ static struct msi_desc *msi_setup_entry(struct pci_dev *dev, int nvec)
 	entry->msi_attrib.multi_cap	= (control & PCI_MSI_FLAGS_QMASK) >> 1;
 	entry->msi_attrib.multiple	= ilog2(__roundup_pow_of_two(nvec));
 	entry->nvec_used		= nvec;
+	entry->affinity			= dev->irq_affinity;
 
 	if (control & PCI_MSI_FLAGS_64BIT)
 		entry->mask_pos = dev->msi_cap + PCI_MSI_MASK_64;
@@ -679,10 +680,18 @@ static void __iomem *msix_map_region(struct pci_dev *dev, unsigned nr_entries)
 static int msix_setup_entries(struct pci_dev *dev, void __iomem *base,
 			      struct msix_entry *entries, int nvec)
 {
+	const struct cpumask *mask = NULL;
 	struct msi_desc *entry;
-	int i;
+	int cpu = -1, i;
 
 	for (i = 0; i < nvec; i++) {
+		if (dev->irq_affinity) {
+			cpu = cpumask_next(cpu, dev->irq_affinity);
+			if (cpu >= nr_cpu_ids)
+				cpu = cpumask_first(dev->irq_affinity);
+			mask = cpumask_of(cpu);
+		}
+
 		entry = alloc_msi_entry(&dev->dev);
 		if (!entry) {
 			if (!i)
@@ -699,6 +708,7 @@ static int msix_setup_entries(struct pci_dev *dev, void __iomem *base,
 		entry->msi_attrib.default_irq	= dev->irq;
 		entry->mask_base		= base;
 		entry->nvec_used		= 1;
+		entry->affinity			= mask;
 
 		list_add_tail(&entry->list, dev_to_msi_list(&dev->dev));
 	}
@@ -1176,12 +1186,20 @@ int pci_alloc_irq_vectors(struct pci_dev *dev, unsigned int min_vecs,
 {
 	unsigned int vecs, i;
 	u32 *irqs;
+	int ret;
 
 	max_vecs = min(max_vecs, pci_nr_irq_vectors(dev));
 
+	ret = irq_create_affinity_mask(&dev->irq_affinity, &max_vecs);
+	if (ret)
+		return ret;
+	if (max_vecs < min_vecs)
+		return -ENOSPC;
+
+	ret = -ENOMEM;
 	irqs = kcalloc(max_vecs, sizeof(u32), GFP_KERNEL);
 	if (!irqs)
-		return -ENOMEM;
+		goto out_free_affinity;
 
 	if (!(flags & PCI_IRQ_NOMSIX)) {
 		vecs = pci_enable_msix_range_wrapper(dev, irqs, min_vecs,
@@ -1208,6 +1226,10 @@ int pci_alloc_irq_vectors(struct pci_dev *dev, unsigned int min_vecs,
 done:
 	dev->irqs = irqs;
 	return vecs;
+out_free_affinity:
+	kfree(dev->irq_affinity);
+	dev->irq_affinity = NULL;
+	return ret;
 }
 EXPORT_SYMBOL(pci_alloc_irq_vectors);
 

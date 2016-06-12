@@ -321,6 +321,7 @@ struct pci_dev {
 	 */
 	unsigned int	irq;
 	unsigned int	*irqs;
+	struct cpumask	*irq_affinity;
 	struct resource resource[DEVICE_COUNT_RESOURCE]; /* I/O and memory regions + expansion ROMs */
 
 	bool match_driver;		/* Skip attaching driver */
