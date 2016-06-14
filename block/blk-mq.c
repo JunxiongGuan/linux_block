@@ -22,6 +22,7 @@
 #include <linux/sched/sysctl.h>
 #include <linux/delay.h>
 #include <linux/crash_dump.h>
+#include <linux/interrupt.h>
 
 #include <trace/events/block.h>
 
@@ -1996,6 +1997,22 @@ struct request_queue *blk_mq_init_queue(struct blk_mq_tag_set *set)
 }
 EXPORT_SYMBOL(blk_mq_init_queue);
 
+/*
+ * We have no quick way of doing reverse lookups. This is only used at
+ * queue init time, so runtime isn't important.
+ */
+static int blk_mq_hw_queue_to_node(unsigned int *mq_map, unsigned int index)
+{
+	int i;
+
+	for_each_possible_cpu(i) {
+		if (index == mq_map[i])
+			return local_memory_node(cpu_to_node(i));
+	}
+
+	return NUMA_NO_NODE;
+}
+
 static void blk_mq_realloc_hw_ctxs(struct blk_mq_tag_set *set,
 						struct request_queue *q)
 {
@@ -2295,6 +2312,30 @@ struct cpumask *blk_mq_tags_cpumask(struct blk_mq_tags *tags)
 }
 EXPORT_SYMBOL_GPL(blk_mq_tags_cpumask);
 
+static int blk_mq_create_mq_map(struct blk_mq_tag_set *set,
+		const struct cpumask *affinity_mask)
+{
+	int queue = -1, cpu = 0;
+
+	set->mq_map = kzalloc_node(sizeof(*set->mq_map) * nr_cpu_ids,
+			GFP_KERNEL, set->numa_node);
+	if (!set->mq_map)
+		return -ENOMEM;
+
+	if (!affinity_mask)
+		return 0;	/* map all cpus to queue 0 */
+
+	/* If cpus are offline, map them to first hctx */
+	for_each_online_cpu(cpu) {
+		if (cpumask_test_cpu(cpu, affinity_mask))
+			queue++;
+		if (queue >= 0)
+			set->mq_map[cpu] = queue;
+	}
+
+	return 0;
+}
+
 /*
  * Alloc a tag set to be associated with one or more request queues.
  * May fail with EINVAL for various error conditions. May adjust the
@@ -2303,6 +2344,8 @@ EXPORT_SYMBOL_GPL(blk_mq_tags_cpumask);
  */
 int blk_mq_alloc_tag_set(struct blk_mq_tag_set *set)
 {
+	int ret;
+
 	BUILD_BUG_ON(BLK_MQ_MAX_DEPTH > 1 << BLK_MQ_UNIQUE_TAG_BITS);
 
 	if (!set->nr_hw_queues)
@@ -2341,11 +2384,26 @@ int blk_mq_alloc_tag_set(struct blk_mq_tag_set *set)
 	if (!set->tags)
 		return -ENOMEM;
 
-	set->mq_map = blk_mq_make_queue_map(set);
-	if (!set->mq_map)
-		goto out_free_tags;
+	/*
+	 * Use the passed in affinity mask if the driver provided one.
+	 */
+	if (set->affinity_mask) {
+		ret = blk_mq_create_mq_map(set, set->affinity_mask);
+		if (!set->mq_map)
+			goto out_free_tags;
+	} else {
+		struct cpumask *affinity_mask;
 
-	if (blk_mq_alloc_rq_maps(set))
+		affinity_mask = irq_create_affinity_mask(&set->nr_hw_queues);
+		ret = blk_mq_create_mq_map(set, affinity_mask);
+		kfree(affinity_mask);
+
+		if (!set->mq_map)
+			goto out_free_tags;
+	}
+
+	ret = blk_mq_alloc_rq_maps(set);
+	if (ret)
 		goto out_free_mq_map;
 
 	mutex_init(&set->tag_list_lock);
@@ -2359,7 +2417,7 @@ out_free_mq_map:
 out_free_tags:
 	kfree(set->tags);
 	set->tags = NULL;
-	return -ENOMEM;
+	return ret;
 }
 EXPORT_SYMBOL(blk_mq_alloc_tag_set);
 
