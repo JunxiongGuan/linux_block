@@ -95,7 +95,8 @@ argument set to this limit, and the PCI core will return -ENOSPC if it can't
 meet the minimum number of vectors.
 The flags argument should normally be set to 0, but can be used to
 pass the PCI_IRQ_NOMSI and PCI_IRQ_NOMSIX flag in case a device claims
-to support MSI or MSI-X, but the support is broken.
+to support MSI or MSI-X, but the support is broken, or to PCI_IRQ_NOAFFINITY
+if the driver does not wish to use the automatic affinity assignment feature.
 
 To get the Linux IRQ numbers passed to request_irq and free_irq
 and the vectors use the following function:
