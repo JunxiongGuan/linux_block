@@ -123,6 +123,7 @@ int blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 		ret = submit_bio_wait(bio);
 		if (ret == -EOPNOTSUPP && !(flags & BLKDEV_DISCARD_ZERO))
 			ret = 0;
+		bio_put(bio);
 	}
 	blk_finish_plug(&plug);
 
@@ -176,8 +177,10 @@ int blkdev_issue_write_same(struct block_device *bdev, sector_t sector,
 		}
 	}
 
-	if (bio)
+	if (bio) {
 		ret = submit_bio_wait(bio);
+		bio_put(bio);
+	}
 	return ret;
 }
 EXPORT_SYMBOL(blkdev_issue_write_same);
@@ -217,8 +220,11 @@ static int __blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 		}
 	}
 
-	if (bio)
-		return submit_bio_wait(bio);
+	if (bio) {
+		ret = submit_bio_wait(bio);
+		bio_put(bio);
+		return ret;
+	}
 	return 0;
 }
 
