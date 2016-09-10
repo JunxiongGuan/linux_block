@@ -248,6 +248,8 @@ int blk_mq_reinit_tagset(struct blk_mq_tag_set *set);
 
 void blk_mq_update_nr_hw_queues(struct blk_mq_tag_set *set, int nr_hw_queues);
 
+int blk_mq_pci_map_queues(struct blk_mq_tag_set *set, struct pci_dev *pdev);
+
 /*
  * Driver command data is immediately after the request. So subtract request
  * size to get back to the original request, add request size to get the PDU.
