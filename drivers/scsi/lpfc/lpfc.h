@@ -711,7 +711,6 @@ struct lpfc_hba {
 #define LPFC_FCF_FOV 1		/* Fast fcf failover */
 #define LPFC_FCF_PRIORITY 2	/* Priority fcf failover */
 	uint32_t cfg_fcf_failover_policy;
-	uint32_t cfg_fcp_io_sched;
 	uint32_t cfg_fcp2_no_tgt_reset;
 	uint32_t cfg_cr_delay;
 	uint32_t cfg_cr_count;
@@ -788,8 +787,6 @@ struct lpfc_hba {
 	struct list_head rb_pend_list;  /* Received buffers to be processed */
 	uint32_t hbq_count;	        /* Count of configured HBQs */
 	struct hbq_s hbqs[LPFC_MAX_HBQS]; /* local copy of hbq indicies  */
-
-	atomic_t fcp_qidx;		/* next work queue to post work to */
 
 	phys_addr_t pci_bar0_map;     /* Physical address for PCI BAR0 */
 	phys_addr_t pci_bar1_map;     /* Physical address for PCI BAR1 */

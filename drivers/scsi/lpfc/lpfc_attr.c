@@ -4189,157 +4189,6 @@ lpfc_fcp_imax_init(struct lpfc_hba *phba, int val)
 static DEVICE_ATTR(lpfc_fcp_imax, S_IRUGO | S_IWUSR,
 		   lpfc_fcp_imax_show, lpfc_fcp_imax_store);
 
-/**
- * lpfc_state_show - Display current driver CPU affinity
- * @dev: class converted to a Scsi_host structure.
- * @attr: device attribute, not used.
- * @buf: on return contains text describing the state of the link.
- *
- * Returns: size of formatted string.
- **/
-static ssize_t
-lpfc_fcp_cpu_map_show(struct device *dev, struct device_attribute *attr,
-		      char *buf)
-{
-	struct Scsi_Host  *shost = class_to_shost(dev);
-	struct lpfc_vport *vport = (struct lpfc_vport *)shost->hostdata;
-	struct lpfc_hba   *phba = vport->phba;
-	struct lpfc_vector_map_info *cpup;
-	int  len = 0;
-
-	if ((phba->sli_rev != LPFC_SLI_REV4) ||
-	    (phba->intr_type != MSIX))
-		return len;
-
-	switch (phba->cfg_fcp_cpu_map) {
-	case 0:
-		len += snprintf(buf + len, PAGE_SIZE-len,
-				"fcp_cpu_map: No mapping (%d)\n",
-				phba->cfg_fcp_cpu_map);
-		return len;
-	case 1:
-		len += snprintf(buf + len, PAGE_SIZE-len,
-				"fcp_cpu_map: HBA centric mapping (%d): "
-				"%d online CPUs\n",
-				phba->cfg_fcp_cpu_map,
-				phba->sli4_hba.num_online_cpu);
-		break;
-	case 2:
-		len += snprintf(buf + len, PAGE_SIZE-len,
-				"fcp_cpu_map: Driver centric mapping (%d): "
-				"%d online CPUs\n",
-				phba->cfg_fcp_cpu_map,
-				phba->sli4_hba.num_online_cpu);
-		break;
-	}
-
-	while (phba->sli4_hba.curr_disp_cpu < phba->sli4_hba.num_present_cpu) {
-		cpup = &phba->sli4_hba.cpu_map[phba->sli4_hba.curr_disp_cpu];
-
-		/* margin should fit in this and the truncated message */
-		if (cpup->irq == LPFC_VECTOR_MAP_EMPTY)
-			len += snprintf(buf + len, PAGE_SIZE-len,
-					"CPU %02d io_chan %02d "
-					"physid %d coreid %d\n",
-					phba->sli4_hba.curr_disp_cpu,
-					cpup->channel_id, cpup->phys_id,
-					cpup->core_id);
-		else
-			len += snprintf(buf + len, PAGE_SIZE-len,
-					"CPU %02d io_chan %02d "
-					"physid %d coreid %d IRQ %d\n",
-					phba->sli4_hba.curr_disp_cpu,
-					cpup->channel_id, cpup->phys_id,
-					cpup->core_id, cpup->irq);
-
-		phba->sli4_hba.curr_disp_cpu++;
-
-		/* display max number of CPUs keeping some margin */
-		if (phba->sli4_hba.curr_disp_cpu <
-				phba->sli4_hba.num_present_cpu &&
-				(len >= (PAGE_SIZE - 64))) {
-			len += snprintf(buf + len, PAGE_SIZE-len, "more...\n");
-			break;
-		}
-	}
-
-	if (phba->sli4_hba.curr_disp_cpu == phba->sli4_hba.num_present_cpu)
-		phba->sli4_hba.curr_disp_cpu = 0;
-
-	return len;
-}
-
-/**
- * lpfc_fcp_cpu_map_store - Change CPU affinity of driver vectors
- * @dev: class device that is converted into a Scsi_host.
- * @attr: device attribute, not used.
- * @buf: one or more lpfc_polling_flags values.
- * @count: not used.
- *
- * Returns:
- * -EINVAL  - Not implemented yet.
- **/
-static ssize_t
-lpfc_fcp_cpu_map_store(struct device *dev, struct device_attribute *attr,
-		       const char *buf, size_t count)
-{
-	int status = -EINVAL;
-	return status;
-}
-
-/*
-# lpfc_fcp_cpu_map: Defines how to map CPUs to IRQ vectors
-# for the HBA.
-#
-# Value range is [0 to 2]. Default value is LPFC_DRIVER_CPU_MAP (2).
-#	0 - Do not affinitze IRQ vectors
-#	1 - Affintize HBA vectors with respect to each HBA
-#	    (start with CPU0 for each HBA)
-#	2 - Affintize HBA vectors with respect to the entire driver
-#	    (round robin thru all CPUs across all HBAs)
-*/
-static int lpfc_fcp_cpu_map = LPFC_DRIVER_CPU_MAP;
-module_param(lpfc_fcp_cpu_map, int, S_IRUGO|S_IWUSR);
-MODULE_PARM_DESC(lpfc_fcp_cpu_map,
-		 "Defines how to map CPUs to IRQ vectors per HBA");
-
-/**
- * lpfc_fcp_cpu_map_init - Set the initial sr-iov virtual function enable
- * @phba: lpfc_hba pointer.
- * @val: link speed value.
- *
- * Description:
- * If val is in a valid range [0-2], then affinitze the adapter's
- * MSIX vectors.
- *
- * Returns:
- * zero if val saved.
- * -EINVAL val out of range
- **/
-static int
-lpfc_fcp_cpu_map_init(struct lpfc_hba *phba, int val)
-{
-	if (phba->sli_rev != LPFC_SLI_REV4) {
-		phba->cfg_fcp_cpu_map = 0;
-		return 0;
-	}
-
-	if (val >= LPFC_MIN_CPU_MAP && val <= LPFC_MAX_CPU_MAP) {
-		phba->cfg_fcp_cpu_map = val;
-		return 0;
-	}
-
-	lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
-			"3326 lpfc_fcp_cpu_map: %d out of range, using "
-			"default\n", val);
-	phba->cfg_fcp_cpu_map = LPFC_DRIVER_CPU_MAP;
-
-	return 0;
-}
-
-static DEVICE_ATTR(lpfc_fcp_cpu_map, S_IRUGO | S_IWUSR,
-		   lpfc_fcp_cpu_map_show, lpfc_fcp_cpu_map_store);
-
 /*
 # lpfc_fcp_class:  Determines FC class to use for the FCP protocol.
 # Value range is [2,3]. Default value is 3.
@@ -4407,19 +4256,6 @@ static DEVICE_ATTR(lpfc_max_scsicmpl_time, S_IRUGO | S_IWUSR,
 # range is [0,1]. Default value is 0.
 */
 LPFC_ATTR_R(ack0, 0, 0, 1, "Enable ACK0 support");
-
-/*
-# lpfc_fcp_io_sched: Determine scheduling algrithmn for issuing FCP cmds
-# range is [0,1]. Default value is 0.
-# For [0], FCP commands are issued to Work Queues ina round robin fashion.
-# For [1], FCP commands are issued to a Work Queue associated with the
-#          current CPU.
-# It would be set to 1 by the driver if it's able to set up cpu affinity
-# for FCP I/Os through Work Queue associated with the current CPU. Otherwise,
-# roundrobin scheduling of FCP I/Os through WQs will be used.
-*/
-LPFC_ATTR_RW(fcp_io_sched, 0, 0, 1, "Determine scheduling algorithm for "
-		"issuing commands [0] - Round Robin, [1] - Current CPU");
 
 /*
 # lpfc_fcp2_no_tgt_reset: Determine bus reset behavior
@@ -4719,7 +4555,6 @@ struct device_attribute *lpfc_hba_attrs[] = {
 	&dev_attr_lpfc_topology,
 	&dev_attr_lpfc_scan_down,
 	&dev_attr_lpfc_link_speed,
-	&dev_attr_lpfc_fcp_io_sched,
 	&dev_attr_lpfc_fcp2_no_tgt_reset,
 	&dev_attr_lpfc_cr_delay,
 	&dev_attr_lpfc_cr_count,
@@ -4747,7 +4582,6 @@ struct device_attribute *lpfc_hba_attrs[] = {
 	&dev_attr_lpfc_task_mgmt_tmo,
 	&dev_attr_lpfc_use_msi,
 	&dev_attr_lpfc_fcp_imax,
-	&dev_attr_lpfc_fcp_cpu_map,
 	&dev_attr_lpfc_fcp_io_channel,
 	&dev_attr_lpfc_enable_bg,
 	&dev_attr_lpfc_soft_wwnn,
@@ -5724,7 +5558,6 @@ struct fc_function_template lpfc_vport_transport_functions = {
 void
 lpfc_get_cfgparam(struct lpfc_hba *phba)
 {
-	lpfc_fcp_io_sched_init(phba, lpfc_fcp_io_sched);
 	lpfc_fcp2_no_tgt_reset_init(phba, lpfc_fcp2_no_tgt_reset);
 	lpfc_cr_delay_init(phba, lpfc_cr_delay);
 	lpfc_cr_count_init(phba, lpfc_cr_count);
@@ -5743,7 +5576,6 @@ lpfc_get_cfgparam(struct lpfc_hba *phba)
 	lpfc_enable_SmartSAN_init(phba, lpfc_enable_SmartSAN);
 	lpfc_use_msi_init(phba, lpfc_use_msi);
 	lpfc_fcp_imax_init(phba, lpfc_fcp_imax);
-	lpfc_fcp_cpu_map_init(phba, lpfc_fcp_cpu_map);
 	lpfc_fcp_io_channel_init(phba, lpfc_fcp_io_channel);
 	lpfc_enable_hba_reset_init(phba, lpfc_enable_hba_reset);
 	lpfc_enable_hba_heartbeat_init(phba, lpfc_enable_hba_heartbeat);

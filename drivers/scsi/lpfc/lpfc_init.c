@@ -60,10 +60,6 @@ char *_dump_buf_dif;
 unsigned long _dump_buf_dif_order;
 spinlock_t _dump_buf_lock;
 
-/* Used when mapping IRQ vectors in a driver centric manner */
-uint16_t *lpfc_used_cpu;
-uint32_t lpfc_present_cpu;
-
 static void lpfc_get_hba_model_desc(struct lpfc_hba *, uint8_t *, uint8_t *);
 static int lpfc_post_rcv_buf(struct lpfc_hba *);
 static int lpfc_sli4_queue_verify(struct lpfc_hba *);
@@ -5175,7 +5171,6 @@ lpfc_sli_driver_resource_unset(struct lpfc_hba *phba)
 static int
 lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 {
-	struct lpfc_vector_map_info *cpup;
 	struct lpfc_sli *psli;
 	LPFC_MBOXQ_t *mboxq;
 	int rc, i, hbq_count, max_buf_size;
@@ -5510,39 +5505,14 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 		goto out_free_fcf_rr_bmask;
 	}
 
-	phba->sli4_hba.cpu_map = kzalloc((sizeof(struct lpfc_vector_map_info) *
-					 phba->sli4_hba.num_present_cpu),
-					 GFP_KERNEL);
-	if (!phba->sli4_hba.cpu_map) {
+	phba->sli4_hba.channel_map = kcalloc(nr_cpu_ids,
+			sizeof(*phba->sli4_hba.channel_map), GFP_KERNEL);
+	if (!phba->sli4_hba.channel_map) {
 		lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
 				"3327 Failed allocate memory for msi-x "
 				"interrupt vector mapping\n");
 		rc = -ENOMEM;
 		goto out_free_fcp_eq_hdl;
-	}
-	if (lpfc_used_cpu == NULL) {
-		lpfc_used_cpu = kzalloc((sizeof(uint16_t) * lpfc_present_cpu),
-					 GFP_KERNEL);
-		if (!lpfc_used_cpu) {
-			lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
-					"3335 Failed allocate memory for msi-x "
-					"interrupt vector mapping\n");
-			kfree(phba->sli4_hba.cpu_map);
-			rc = -ENOMEM;
-			goto out_free_fcp_eq_hdl;
-		}
-		for (i = 0; i < lpfc_present_cpu; i++)
-			lpfc_used_cpu[i] = LPFC_VECTOR_MAP_EMPTY;
-	}
-
-	/* Initialize io channels for round robin */
-	cpup = phba->sli4_hba.cpu_map;
-	rc = 0;
-	for (i = 0; i < phba->sli4_hba.num_present_cpu; i++) {
-		cpup->channel_id = rc;
-		rc++;
-		if (rc >= phba->cfg_fcp_io_channel)
-			rc = 0;
 	}
 
 	/*
@@ -5594,10 +5564,7 @@ lpfc_sli4_driver_resource_unset(struct lpfc_hba *phba)
 	struct lpfc_fcf_conn_entry *conn_entry, *next_conn_entry;
 
 	/* Free memory allocated for msi-x interrupt vector to CPU mapping */
-	kfree(phba->sli4_hba.cpu_map);
-	phba->sli4_hba.num_present_cpu = 0;
-	phba->sli4_hba.num_online_cpu = 0;
-	phba->sli4_hba.curr_disp_cpu = 0;
+	kfree(phba->sli4_hba.channel_map);
 
 	/* Free memory allocated for fast-path work queue handles */
 	kfree(phba->sli4_hba.fcp_eq_hdl);
@@ -7228,9 +7195,6 @@ lpfc_sli4_queue_verify(struct lpfc_hba *phba)
 		if (cpu_online(cpu))
 			i++;
 	}
-	phba->sli4_hba.num_online_cpu = i;
-	phba->sli4_hba.num_present_cpu = lpfc_present_cpu;
-	phba->sli4_hba.curr_disp_cpu = 0;
 
 	if (i < cfg_fcp_io_channel) {
 		lpfc_printf_log(phba,
@@ -8691,285 +8655,27 @@ lpfc_sli_disable_intr(struct lpfc_hba *phba)
 	phba->sli.slistat.sli_intr = 0;
 }
 
-/**
- * lpfc_find_next_cpu - Find next available CPU that matches the phys_id
- * @phba: pointer to lpfc hba data structure.
- *
- * Find next available CPU to use for IRQ to CPU affinity.
- */
-static int
-lpfc_find_next_cpu(struct lpfc_hba *phba, uint32_t phys_id)
-{
-	struct lpfc_vector_map_info *cpup;
-	int cpu;
-
-	cpup = phba->sli4_hba.cpu_map;
-	for (cpu = 0; cpu < phba->sli4_hba.num_present_cpu; cpu++) {
-		/* CPU must be online */
-		if (cpu_online(cpu)) {
-			if ((cpup->irq == LPFC_VECTOR_MAP_EMPTY) &&
-			    (lpfc_used_cpu[cpu] == LPFC_VECTOR_MAP_EMPTY) &&
-			    (cpup->phys_id == phys_id)) {
-				return cpu;
-			}
-		}
-		cpup++;
-	}
-
-	/*
-	 * If we get here, we have used ALL CPUs for the specific
-	 * phys_id. Now we need to clear out lpfc_used_cpu and start
-	 * reusing CPUs.
-	 */
-
-	for (cpu = 0; cpu < phba->sli4_hba.num_present_cpu; cpu++) {
-		if (lpfc_used_cpu[cpu] == phys_id)
-			lpfc_used_cpu[cpu] = LPFC_VECTOR_MAP_EMPTY;
-	}
-
-	cpup = phba->sli4_hba.cpu_map;
-	for (cpu = 0; cpu < phba->sli4_hba.num_present_cpu; cpu++) {
-		/* CPU must be online */
-		if (cpu_online(cpu)) {
-			if ((cpup->irq == LPFC_VECTOR_MAP_EMPTY) &&
-			    (cpup->phys_id == phys_id)) {
-				return cpu;
-			}
-		}
-		cpup++;
-	}
-	return LPFC_VECTOR_MAP_EMPTY;
-}
-
-/**
- * lpfc_sli4_set_affinity - Set affinity for HBA IRQ vectors
- * @phba:	pointer to lpfc hba data structure.
- * @vectors:	number of HBA vectors
- *
- * Affinitize MSIX IRQ vectors to CPUs. Try to equally spread vector
- * affinization across multple physical CPUs (numa nodes).
- * In addition, this routine will assign an IO channel for each CPU
- * to use when issuing I/Os.
- */
 static int
 lpfc_sli4_set_affinity(struct lpfc_hba *phba, int vectors)
 {
-	int i, idx, saved_chann, used_chann, cpu, phys_id;
-	int max_phys_id, min_phys_id;
-	int num_io_channel, first_cpu, chan;
-	struct lpfc_vector_map_info *cpup;
-#ifdef CONFIG_X86
-	struct cpuinfo_x86 *cpuinfo;
-#endif
-	uint8_t chann[LPFC_FCP_IO_CHAN_MAX+1];
+	const struct cpumask *mask;
+	int cpu, i;
 
 	/* If there is no mapping, just return */
 	if (!phba->cfg_fcp_cpu_map)
 		return 1;
 
-	/* Init cpu_map array */
-	memset(phba->sli4_hba.cpu_map, 0xff,
-	       (sizeof(struct lpfc_vector_map_info) *
-		phba->sli4_hba.num_present_cpu));
+	for (i = 0; i < vectors; i++) {
+		mask = pci_irq_get_affinity(phba->pcidev, i);
+		if (!mask)
+			return -EINVAL;
 
-	max_phys_id = 0;
-	min_phys_id = 0xff;
-	phys_id = 0;
-	num_io_channel = 0;
-	first_cpu = LPFC_VECTOR_MAP_EMPTY;
-
-	/* Update CPU map with physical id and core id of each CPU */
-	cpup = phba->sli4_hba.cpu_map;
-	for (cpu = 0; cpu < phba->sli4_hba.num_present_cpu; cpu++) {
-#ifdef CONFIG_X86
-		cpuinfo = &cpu_data(cpu);
-		cpup->phys_id = cpuinfo->phys_proc_id;
-		cpup->core_id = cpuinfo->cpu_core_id;
-#else
-		/* No distinction between CPUs for other platforms */
-		cpup->phys_id = 0;
-		cpup->core_id = 0;
-#endif
-
-		lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
-				"3328 CPU physid %d coreid %d\n",
-				cpup->phys_id, cpup->core_id);
-
-		if (cpup->phys_id > max_phys_id)
-			max_phys_id = cpup->phys_id;
-		if (cpup->phys_id < min_phys_id)
-			min_phys_id = cpup->phys_id;
-		cpup++;
+		for_each_cpu(cpu, mask)
+			phba->sli4_hba.channel_map[cpu] = i;
 	}
 
-	phys_id = min_phys_id;
-	/* Now associate the HBA vectors with specific CPUs */
-	for (idx = 0; idx < vectors; idx++) {
-		cpup = phba->sli4_hba.cpu_map;
-		cpu = lpfc_find_next_cpu(phba, phys_id);
-		if (cpu == LPFC_VECTOR_MAP_EMPTY) {
-
-			/* Try for all phys_id's */
-			for (i = 1; i < max_phys_id; i++) {
-				phys_id++;
-				if (phys_id > max_phys_id)
-					phys_id = min_phys_id;
-				cpu = lpfc_find_next_cpu(phba, phys_id);
-				if (cpu == LPFC_VECTOR_MAP_EMPTY)
-					continue;
-				goto found;
-			}
-
-			/* Use round robin for scheduling */
-			phba->cfg_fcp_io_sched = LPFC_FCP_SCHED_ROUND_ROBIN;
-			chan = 0;
-			cpup = phba->sli4_hba.cpu_map;
-			for (i = 0; i < phba->sli4_hba.num_present_cpu; i++) {
-				cpup->channel_id = chan;
-				cpup++;
-				chan++;
-				if (chan >= phba->cfg_fcp_io_channel)
-					chan = 0;
-			}
-
-			lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
-					"3329 Cannot set affinity:"
-					"Error mapping vector %d (%d)\n",
-					idx, vectors);
-			return 0;
-		}
-found:
-		cpup += cpu;
-		if (phba->cfg_fcp_cpu_map == LPFC_DRIVER_CPU_MAP)
-			lpfc_used_cpu[cpu] = phys_id;
-
-		/* Associate vector with selected CPU */
-		cpup->irq = pci_irq_vector(phba->pcidev, idx);
-
-		/* Associate IO channel with selected CPU */
-		cpup->channel_id = idx;
-		num_io_channel++;
-
-		if (first_cpu == LPFC_VECTOR_MAP_EMPTY)
-			first_cpu = cpu;
-
-		/* Now affinitize to the selected CPU */
-		i = irq_set_affinity_hint(pci_irq_vector(phba->pcidev, idx),
-					  get_cpu_mask(cpu));
-
-		lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
-				"3330 Set Affinity: CPU %d channel %d "
-				"irq %d (%x)\n",
-				cpu, cpup->channel_id,
-				pci_irq_vector(phba->pcidev, idx), i);
-
-		/* Spread vector mapping across multple physical CPU nodes */
-		phys_id++;
-		if (phys_id > max_phys_id)
-			phys_id = min_phys_id;
-	}
-
-	/*
-	 * Finally fill in the IO channel for any remaining CPUs.
-	 * At this point, all IO channels have been assigned to a specific
-	 * MSIx vector, mapped to a specific CPU.
-	 * Base the remaining IO channel assigned, to IO channels already
-	 * assigned to other CPUs on the same phys_id.
-	 */
-	for (i = min_phys_id; i <= max_phys_id; i++) {
-		/*
-		 * If there are no io channels already mapped to
-		 * this phys_id, just round robin thru the io_channels.
-		 * Setup chann[] for round robin.
-		 */
-		for (idx = 0; idx < phba->cfg_fcp_io_channel; idx++)
-			chann[idx] = idx;
-
-		saved_chann = 0;
-		used_chann = 0;
-
-		/*
-		 * First build a list of IO channels already assigned
-		 * to this phys_id before reassigning the same IO
-		 * channels to the remaining CPUs.
-		 */
-		cpup = phba->sli4_hba.cpu_map;
-		cpu = first_cpu;
-		cpup += cpu;
-		for (idx = 0; idx < phba->sli4_hba.num_present_cpu;
-		     idx++) {
-			if (cpup->phys_id == i) {
-				/*
-				 * Save any IO channels that are
-				 * already mapped to this phys_id.
-				 */
-				if (cpup->irq != LPFC_VECTOR_MAP_EMPTY) {
-					if (saved_chann <=
-					    LPFC_FCP_IO_CHAN_MAX) {
-						chann[saved_chann] =
-							cpup->channel_id;
-						saved_chann++;
-					}
-					goto out;
-				}
-
-				/* See if we are using round-robin */
-				if (saved_chann == 0)
-					saved_chann =
-						phba->cfg_fcp_io_channel;
-
-				/* Associate next IO channel with CPU */
-				cpup->channel_id = chann[used_chann];
-				num_io_channel++;
-				used_chann++;
-				if (used_chann == saved_chann)
-					used_chann = 0;
-
-				lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
-						"3331 Set IO_CHANN "
-						"CPU %d channel %d\n",
-						idx, cpup->channel_id);
-			}
-out:
-			cpu++;
-			if (cpu >= phba->sli4_hba.num_present_cpu) {
-				cpup = phba->sli4_hba.cpu_map;
-				cpu = 0;
-			} else {
-				cpup++;
-			}
-		}
-	}
-
-	if (phba->sli4_hba.num_online_cpu != phba->sli4_hba.num_present_cpu) {
-		cpup = phba->sli4_hba.cpu_map;
-		for (idx = 0; idx < phba->sli4_hba.num_present_cpu; idx++) {
-			if (cpup->channel_id == LPFC_VECTOR_MAP_EMPTY) {
-				cpup->channel_id = 0;
-				num_io_channel++;
-
-				lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
-						"3332 Assign IO_CHANN "
-						"CPU %d channel %d\n",
-						idx, cpup->channel_id);
-			}
-			cpup++;
-		}
-	}
-
-	/* Sanity check */
-	if (num_io_channel != phba->sli4_hba.num_present_cpu)
-		lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
-				"3333 Set affinity mismatch:"
-				"%d chann != %d cpus: %d vectors\n",
-				num_io_channel, phba->sli4_hba.num_present_cpu,
-				vectors);
-
-	/* Enable using cpu affinity for scheduling */
-	phba->cfg_fcp_io_sched = LPFC_FCP_SCHED_BY_CPU;
 	return 1;
 }
-
 
 /**
  * lpfc_sli4_enable_msix - Enable MSI-X interrupt mode to SLI-4 device
@@ -8986,13 +8692,17 @@ static int
 lpfc_sli4_enable_msix(struct lpfc_hba *phba)
 {
 	int vectors, rc, index;
+	struct irq_affinity desc = { 0, };
 
 	/* Set up MSI-X multi-message vectors */
 	vectors = phba->cfg_fcp_io_channel;
-	if (phba->cfg_fof)
+	if (phba->cfg_fof) {
 		vectors++;
+		desc.post_vectors++;
+	}
 
-	rc = pci_alloc_irq_vectors(phba->pcidev, 2, vectors, PCI_IRQ_MSIX);
+	rc = pci_alloc_irq_vectors_affinity(phba->pcidev, 2, vectors,
+			PCI_IRQ_MSIX | PCI_IRQ_AFFINITY, &desc);
 	if (rc < 0) {
 		lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
 				"0484 PCI enable MSI-X failed (%d)\n", rc);
@@ -9046,10 +8756,8 @@ lpfc_sli4_enable_msix(struct lpfc_hba *phba)
 cfg_fail_out:
 	/* free the irq already requested */
 	for (--index; index >= 0; index--) {
-		int irq = pci_irq_vector(phba->pcidev, index);
-
-		irq_set_affinity_hint(irq, NULL);
-		free_irq(irq, &phba->sli4_hba.fcp_eq_hdl[index]);
+		free_irq(pci_irq_vector(phba->pcidev, index),
+			&phba->sli4_hba.fcp_eq_hdl[index]);
 	}
 
 	/* Unconfigure MSI-X capability structure */
@@ -9199,10 +8907,8 @@ lpfc_sli4_disable_intr(struct lpfc_hba *phba)
 
 		/* Free up MSI-X multi-message vectors */
 		for (index = 0; index < phba->cfg_fcp_io_channel; index++) {
-			int irq = pci_irq_vector(phba->pcidev, index);
-
-			irq_set_affinity_hint(irq, NULL);
-			free_irq(irq, &phba->sli4_hba.fcp_eq_hdl[index]);
+			free_irq(pci_irq_vector(phba->pcidev, index),
+				&phba->sli4_hba.fcp_eq_hdl[index]);
 		}
 
 		if (phba->cfg_fof)
@@ -11345,7 +11051,6 @@ static struct miscdevice lpfc_mgmt_dev = {
 static int __init
 lpfc_init(void)
 {
-	int cpu;
 	int error = 0;
 
 	printk(LPFC_MODULE_DESC "\n");
@@ -11368,12 +11073,6 @@ lpfc_init(void)
 		fc_release_transport(lpfc_transport_template);
 		return -ENOMEM;
 	}
-
-	/* Initialize in case vector mapping is needed */
-	lpfc_used_cpu = NULL;
-	lpfc_present_cpu = 0;
-	for_each_present_cpu(cpu)
-		lpfc_present_cpu++;
 
 	error = pci_register_driver(&lpfc_driver);
 	if (error) {
@@ -11411,7 +11110,6 @@ lpfc_exit(void)
 				(1L << _dump_buf_dif_order), _dump_buf_dif);
 		free_pages((unsigned long)_dump_buf_dif, _dump_buf_dif_order);
 	}
-	kfree(lpfc_used_cpu);
 	idr_destroy(&lpfc_hba_index);
 }
 

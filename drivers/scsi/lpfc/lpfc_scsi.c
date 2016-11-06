@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <asm/unaligned.h>
 #include <linux/crc-t10dif.h>
+#include <linux/blk-mq-pci.h>
 #include <net/checksum.h>
 
 #include <scsi/scsi.h>
@@ -3875,32 +3876,15 @@ int lpfc_sli4_scmd_to_wqidx_distr(struct lpfc_hba *phba,
 				  struct lpfc_scsi_buf *lpfc_cmd)
 {
 	struct scsi_cmnd *cmnd = lpfc_cmd->pCmd;
-	struct lpfc_vector_map_info *cpup;
-	int chann, cpu;
-	uint32_t tag;
-	uint16_t hwq;
 
 	if (cmnd && shost_use_blk_mq(cmnd->device->host)) {
-		tag = blk_mq_unique_tag(cmnd->request);
-		hwq = blk_mq_unique_tag_to_hwq(tag);
+		u32 tag = blk_mq_unique_tag(cmnd->request);
 
-		return hwq;
+		return blk_mq_unique_tag_to_hwq(tag);
+	} else {
+		return phba->sli4_hba.channel_map[raw_smp_processor_id()];
 	}
-
-	if (phba->cfg_fcp_io_sched == LPFC_FCP_SCHED_BY_CPU
-	    && phba->cfg_fcp_io_channel > 1) {
-		cpu = smp_processor_id();
-		if (cpu < phba->sli4_hba.num_present_cpu) {
-			cpup = phba->sli4_hba.cpu_map;
-			cpup += cpu;
-			return cpup->channel_id;
-		}
-	}
-	chann = atomic_add_return(1, &phba->fcp_qidx);
-	chann = (chann % phba->cfg_fcp_io_channel);
-	return chann;
 }
-
 
 /**
  * lpfc_scsi_cmd_iocb_cmpl - Scsi cmnd IOCB completion routine
@@ -5569,6 +5553,13 @@ lpfc_slave_destroy(struct scsi_device *sdev)
 	return;
 }
 
+static int lpfc_map_queues(struct Scsi_Host *shost)
+{
+	struct lpfc_vport *vport = (struct lpfc_vport *)shost->hostdata;
+
+	return blk_mq_pci_map_queues(&shost->tag_set, vport->phba->pcidev);
+}
+
 /**
  * lpfc_create_device_data - creates and initializes device data structure for OAS
  * @pha: Pointer to host bus adapter structure.
@@ -5935,6 +5926,7 @@ struct scsi_host_template lpfc_template = {
 	.slave_configure	= lpfc_slave_configure,
 	.slave_destroy		= lpfc_slave_destroy,
 	.scan_finished		= lpfc_scan_finished,
+	.map_queues		= lpfc_map_queues,
 	.this_id		= -1,
 	.sg_tablesize		= LPFC_DEFAULT_SG_SEG_CNT,
 	.cmd_per_lun		= LPFC_CMD_PER_LUN,
@@ -5960,6 +5952,7 @@ struct scsi_host_template lpfc_vport_template = {
 	.slave_configure	= lpfc_slave_configure,
 	.slave_destroy		= lpfc_slave_destroy,
 	.scan_finished		= lpfc_scan_finished,
+	.map_queues		= lpfc_map_queues,
 	.this_id		= -1,
 	.sg_tablesize		= LPFC_DEFAULT_SG_SEG_CNT,
 	.cmd_per_lun		= LPFC_CMD_PER_LUN,
