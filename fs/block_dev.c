@@ -285,34 +285,8 @@ struct blkdev_dio {
 
 static struct bio_set *blkdev_dio_pool __read_mostly;
 
-static void blkdev_bio_end_io(struct bio *bio)
+static void __blkdev_bio_end_io(struct bio *bio, bool should_dirty)
 {
-	struct blkdev_dio *dio = bio->bi_private;
-	bool should_dirty = dio->should_dirty;
-
-	if (dio->multi_bio && !atomic_dec_and_test(&dio->ref)) {
-		if (bio->bi_error && !dio->bio.bi_error)
-			dio->bio.bi_error = bio->bi_error;
-	} else {
-		if (!dio->is_sync) {
-			struct kiocb *iocb = dio->iocb;
-			ssize_t ret = dio->bio.bi_error;
-
-			if (likely(!ret)) {
-				ret = dio->size;
-				iocb->ki_pos += ret;
-			}
-
-			dio->iocb->ki_complete(iocb, ret, 0);
-			bio_put(&dio->bio);
-		} else {
-			struct task_struct *waiter = dio->waiter;
-
-			WRITE_ONCE(dio->waiter, NULL);
-			wake_up_process(waiter);
-		}
-	}
-
 	if (should_dirty) {
 		bio_check_pages_dirty(bio);
 	} else {
@@ -325,6 +299,48 @@ static void blkdev_bio_end_io(struct bio *bio)
 	}
 }
 
+static void blkdev_bio_end_io_sync(struct bio *bio)
+{
+	struct blkdev_dio *dio = bio->bi_private;
+	bool should_dirty = dio->should_dirty;
+
+	if (dio->multi_bio && !atomic_dec_and_test(&dio->ref)) {
+		if (bio->bi_error && !dio->bio.bi_error)
+			dio->bio.bi_error = bio->bi_error;
+	} else {
+		struct task_struct *waiter = dio->waiter;
+
+		WRITE_ONCE(dio->waiter, NULL);
+		wake_up_process(waiter);
+	}
+
+	__blkdev_bio_end_io(bio, should_dirty);
+}
+
+static void blkdev_bio_end_io_async(struct bio *bio)
+{
+	struct blkdev_dio *dio = bio->bi_private;
+	bool should_dirty = dio->should_dirty;
+
+	if (dio->multi_bio && !atomic_dec_and_test(&dio->ref)) {
+		if (bio->bi_error && !dio->bio.bi_error)
+			dio->bio.bi_error = bio->bi_error;
+	} else {
+		struct kiocb *iocb = dio->iocb;
+		ssize_t ret = dio->bio.bi_error;
+
+		if (likely(!ret)) {
+			ret = dio->size;
+			iocb->ki_pos += ret;
+		}
+
+		dio->iocb->ki_complete(iocb, ret, 0);
+		bio_put(&dio->bio);
+	}
+
+	__blkdev_bio_end_io(bio, should_dirty);
+}
+
 static ssize_t
 __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 {
@@ -335,6 +351,7 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 	struct blkdev_dio *dio;
 	struct bio *bio;
 	bool is_read = (iov_iter_rw(iter) == READ);
+	bool is_sync = is_sync = is_sync_kiocb(iocb);
 	loff_t pos = iocb->ki_pos;
 	blk_qc_t qc = BLK_QC_T_NONE;
 	int ret;
@@ -346,12 +363,10 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 	bio_get(bio); /* extra ref for the completion handler */
 
 	dio = container_of(bio, struct blkdev_dio, bio);
-	dio->is_sync = is_sync_kiocb(iocb);
-	if (dio->is_sync)
+	if (is_sync)
 		dio->waiter = current;
 	else
 		dio->iocb = iocb;
-
 	dio->size = 0;
 	dio->multi_bio = false;
 	dio->should_dirty = is_read && (iter->type == ITER_IOVEC);
@@ -360,7 +375,10 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 		bio->bi_bdev = bdev;
 		bio->bi_iter.bi_sector = pos >> blkbits;
 		bio->bi_private = dio;
-		bio->bi_end_io = blkdev_bio_end_io;
+		if (is_sync)
+			bio->bi_end_io = blkdev_bio_end_io_sync;
+		else
+			bio->bi_end_io = blkdev_bio_end_io_async;
 
 		ret = bio_iov_iter_get_pages(bio, iter);
 		if (unlikely(ret)) {
@@ -398,7 +416,7 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 		bio = bio_alloc(GFP_KERNEL, nr_pages);
 	}
 
-	if (!dio->is_sync)
+	if (!is_sync)
 		return -EIOCBQUEUED;
 
 	for (;;) {
