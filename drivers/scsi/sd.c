@@ -783,6 +783,8 @@ static int sd_setup_discard_cmnd(struct scsi_cmnd *cmd)
 	rq->rq_flags |= RQF_SPECIAL_PAYLOAD;
 	rq->resid_len = len;
 
+	printk_ratelimited("sd: sending discard\n");
+
 	ret = scsi_init_io(cmd);
 out:
 	if (ret != BLKPREP_OK)
@@ -2725,6 +2727,7 @@ static void sd_read_block_limits(struct scsi_disk *sdkp)
 
 		lba_count = get_unaligned_be32(&buffer[20]);
 		desc_count = get_unaligned_be32(&buffer[24]);
+		printk("sd: %d UNMAP descriptors\n", desc_count);
 
 		if (lba_count && desc_count)
 			sdkp->max_unmap_blocks = lba_count;
