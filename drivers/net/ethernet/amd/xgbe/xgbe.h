@@ -980,7 +980,6 @@ struct xgbe_prv_data {
 	unsigned int desc_ded_count;
 	unsigned int desc_sec_count;
 
-	struct msix_entry *msix_entries;
 	int dev_irq;
 	int ecc_irq;
 	int i2c_irq;
