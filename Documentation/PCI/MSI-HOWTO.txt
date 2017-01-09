@@ -163,7 +163,6 @@ not be used in new code:
 
   pci_enable_msi()		/* deprecated */
   pci_enable_msi_range()	/* deprecated */
-  pci_enable_msi_exact()	/* deprecated */
   pci_disable_msi()		/* deprecated */
   pci_enable_msix_range()	/* deprecated */
   pci_enable_msix_exact()	/* deprecated */
