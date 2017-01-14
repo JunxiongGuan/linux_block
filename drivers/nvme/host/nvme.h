@@ -225,6 +225,12 @@ static inline u64 nvme_block_nr(struct nvme_ns *ns, sector_t sector)
 	return (sector >> (ns->lba_shift - 9));
 }
 
+static inline bool nvme_req_has_data(struct request *req,
+		struct nvme_command *cmd)
+{
+	return nvme_has_data(cmd) && blk_rq_bytes(req);
+}
+
 static inline void nvme_cleanup_cmd(struct request *req)
 {
 	if (req->rq_flags & RQF_SPECIAL_PAYLOAD) {

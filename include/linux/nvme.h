@@ -897,6 +897,13 @@ static inline bool nvme_is_write(struct nvme_command *cmd)
 	return cmd->common.opcode & 1;
 }
 
+static inline bool nvme_has_data(struct nvme_command *cmd)
+{
+	if (unlikely(cmd->common.opcode == nvme_fabrics_command))
+		return cmd->fabrics.opcode & 3;
+	return cmd->common.opcode & 3;
+}
+
 enum {
 	/*
 	 * Generic Command Status:

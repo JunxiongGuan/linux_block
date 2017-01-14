@@ -182,7 +182,7 @@ static int nvme_loop_queue_rq(struct blk_mq_hw_ctx *hctx,
 		return BLK_MQ_RQ_QUEUE_OK;
 	}
 
-	if (blk_rq_bytes(req)) {
+	if (nvme_req_has_data(req, &iod->cmd)) {
 		iod->sg_table.sgl = iod->first_sgl;
 		ret = sg_alloc_table_chained(&iod->sg_table,
 				blk_rq_nr_phys_segments(req),

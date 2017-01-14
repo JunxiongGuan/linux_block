@@ -600,7 +600,7 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	iod->length = 0;
 	iod->sg = iod->inline_sg;
 
-	if (blk_rq_nr_phys_segments(req)) {
+	if (nvme_req_has_data(req, &cmnd)) {
 		ret = nvme_map_data(dev, req, &cmnd);
 		if (ret)
 			goto out_free_cmd;

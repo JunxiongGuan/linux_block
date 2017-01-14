@@ -1654,12 +1654,14 @@ nvme_fc_map_data(struct nvme_fc_ctrl *ctrl, struct request *rq,
 		struct nvme_fc_fcp_op *op)
 {
 	struct nvmefc_fcp_req *freq = &op->fcp_req;
+	struct nvme_fc_cmd_iu *cmdiu = &op->cmd_iu;
+	struct nvme_command *sqe = &cmdiu->sqe;
 	enum dma_data_direction dir;
 	int ret;
 
 	freq->sg_cnt = 0;
 
-	if (!blk_rq_payload_bytes(rq))
+	if (!nvme_req_has_data(rq, sqe))
 		return 0;
 
 	freq->sg_table.sgl = freq->first_sgl;
