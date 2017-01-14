@@ -306,33 +306,7 @@ static __le64 **iod_list(struct request *req)
 	return (__le64 **)(iod->sg + blk_rq_nr_phys_segments(req));
 }
 
-static int nvme_init_iod(struct request *rq, struct nvme_dev *dev)
-{
-	struct nvme_iod *iod = blk_mq_rq_to_pdu(rq);
-	int nseg = blk_rq_nr_phys_segments(rq);
-	unsigned int size = blk_rq_payload_bytes(rq);
-
-	if (nseg > NVME_INT_PAGES || size > NVME_INT_BYTES(dev)) {
-		iod->sg = kmalloc(nvme_iod_alloc_size(dev, size, nseg), GFP_ATOMIC);
-		if (!iod->sg)
-			return BLK_MQ_RQ_QUEUE_BUSY;
-	} else {
-		iod->sg = iod->inline_sg;
-	}
-
-	iod->aborted = 0;
-	iod->npages = -1;
-	iod->nents = 0;
-	iod->length = size;
-
-	if (!(rq->rq_flags & RQF_DONTPREP)) {
-		rq->retries = 0;
-		rq->rq_flags |= RQF_DONTPREP;
-	}
-	return BLK_MQ_RQ_QUEUE_OK;
-}
-
-static void nvme_free_iod(struct nvme_dev *dev, struct request *req)
+static void nvme_free_prps(struct nvme_dev *dev, struct request *req)
 {
 	struct nvme_iod *iod = blk_mq_rq_to_pdu(req);
 	const int last_prp = dev->ctrl.page_size / 8 - 1;
@@ -348,9 +322,6 @@ static void nvme_free_iod(struct nvme_dev *dev, struct request *req)
 		dma_pool_free(dev->prp_page_pool, prp_list, prp_dma);
 		prp_dma = next_prp_dma;
 	}
-
-	if (iod->sg != iod->inline_sg)
-		kfree(iod->sg);
 }
 
 #ifdef CONFIG_BLK_DEV_INTEGRITY
@@ -504,19 +475,29 @@ static int nvme_map_data(struct nvme_dev *dev, struct request *req,
 {
 	struct nvme_iod *iod = blk_mq_rq_to_pdu(req);
 	struct request_queue *q = req->q;
+	unsigned int size = blk_rq_payload_bytes(req);
+	int nseg = blk_rq_nr_phys_segments(req);
 	enum dma_data_direction dma_dir = rq_data_dir(req) ?
 			DMA_TO_DEVICE : DMA_FROM_DEVICE;
 	int ret = BLK_MQ_RQ_QUEUE_ERROR;
 
+	iod->length = size;
+	if (nseg > NVME_INT_PAGES || size > NVME_INT_BYTES(dev)) {
+		iod->sg = kmalloc(nvme_iod_alloc_size(dev, size, nseg),
+				GFP_ATOMIC);
+		if (!iod->sg)
+			goto out;
+	}
+
 	sg_init_table(iod->sg, blk_rq_nr_phys_segments(req));
 	iod->nents = blk_rq_map_sg(q, req, iod->sg);
 	if (!iod->nents)
-		goto out;
+		goto out_free_sg;
 
 	ret = BLK_MQ_RQ_QUEUE_BUSY;
 	if (!dma_map_sg_attrs(dev->dev, iod->sg, iod->nents, dma_dir,
 				DMA_ATTR_NO_WARN))
-		goto out;
+		goto out_free_sg;
 
 	if (!nvme_setup_prps(dev, req))
 		goto out_unmap;
@@ -524,7 +505,7 @@ static int nvme_map_data(struct nvme_dev *dev, struct request *req,
 	ret = BLK_MQ_RQ_QUEUE_ERROR;
 	if (blk_integrity_rq(req)) {
 		if (blk_rq_count_integrity_sg(q, req->bio) != 1)
-			goto out_unmap;
+			goto out_free_prps;
 
 		sg_init_table(&iod->meta_sg, 1);
 		if (blk_rq_map_integrity_sg(q, req->bio, &iod->meta_sg) != 1)
@@ -534,7 +515,7 @@ static int nvme_map_data(struct nvme_dev *dev, struct request *req,
 			nvme_dif_remap(req, nvme_dif_prep);
 
 		if (!dma_map_sg(dev->dev, &iod->meta_sg, 1, dma_dir))
-			goto out_unmap;
+			goto out_unmap_integrity;
 	}
 
 	cmnd->rw.dptr.prp1 = cpu_to_le64(sg_dma_address(iod->sg));
@@ -543,8 +524,15 @@ static int nvme_map_data(struct nvme_dev *dev, struct request *req,
 		cmnd->rw.metadata = cpu_to_le64(sg_dma_address(&iod->meta_sg));
 	return BLK_MQ_RQ_QUEUE_OK;
 
+out_unmap_integrity:
+	dma_unmap_sg(dev->dev, &iod->meta_sg, 1, dma_dir);
+out_free_prps:
+	nvme_free_prps(dev, req);
 out_unmap:
 	dma_unmap_sg(dev->dev, iod->sg, iod->nents, dma_dir);
+out_free_sg:
+	if (iod->sg != iod->inline_sg)
+		kfree(iod->sg);
 out:
 	return ret;
 }
@@ -565,7 +553,9 @@ static void nvme_unmap_data(struct nvme_dev *dev, struct request *req)
 	}
 
 	nvme_cleanup_cmd(req);
-	nvme_free_iod(dev, req);
+	nvme_free_prps(dev, req);
+	if (iod->sg != iod->inline_sg)
+		kfree(iod->sg);
 }
 
 /*
@@ -578,6 +568,7 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	struct nvme_queue *nvmeq = hctx->driver_data;
 	struct nvme_dev *dev = nvmeq->dev;
 	struct request *req = bd->rq;
+	struct nvme_iod *iod = blk_mq_rq_to_pdu(req);
 	struct nvme_command cmnd;
 	int ret = BLK_MQ_RQ_QUEUE_OK;
 
@@ -598,15 +589,22 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	if (ret != BLK_MQ_RQ_QUEUE_OK)
 		return ret;
 
-	ret = nvme_init_iod(req, dev);
-	if (ret != BLK_MQ_RQ_QUEUE_OK)
-		goto out_free_cmd;
+	if (!(req->rq_flags & RQF_DONTPREP)) {
+		req->retries = 0;
+		req->rq_flags |= RQF_DONTPREP;
+	}
 
-	if (blk_rq_nr_phys_segments(req))
+	iod->aborted = 0;
+	iod->npages = -1;
+	iod->nents = 0;
+	iod->length = 0;
+	iod->sg = iod->inline_sg;
+
+	if (blk_rq_nr_phys_segments(req)) {
 		ret = nvme_map_data(dev, req, &cmnd);
-
-	if (ret != BLK_MQ_RQ_QUEUE_OK)
-		goto out_cleanup_iod;
+		if (ret)
+			goto out_free_cmd;
+	}
 
 	blk_mq_start_request(req);
 
@@ -624,7 +622,9 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	spin_unlock_irq(&nvmeq->q_lock);
 	return BLK_MQ_RQ_QUEUE_OK;
 out_cleanup_iod:
-	nvme_free_iod(dev, req);
+	nvme_free_prps(dev, req);
+	if (iod->sg != iod->inline_sg)
+		kfree(iod->sg);
 out_free_cmd:
 	nvme_cleanup_cmd(req);
 	return ret;
