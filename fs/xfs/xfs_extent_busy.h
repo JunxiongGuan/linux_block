@@ -58,9 +58,13 @@ void
 xfs_extent_busy_reuse(struct xfs_mount *mp, xfs_agnumber_t agno,
 	xfs_agblock_t fbno, xfs_extlen_t flen, bool userdata);
 
+bool
+xfs_extent_busy_trim(struct xfs_alloc_arg *args, xfs_agblock_t *bno,
+		xfs_extlen_t *len, unsigned *busy_gen);
+
 void
-xfs_extent_busy_trim(struct xfs_alloc_arg *args, xfs_agblock_t bno,
-	xfs_extlen_t len, xfs_agblock_t *rbno, xfs_extlen_t *rlen);
+xfs_extent_busy_flush(struct xfs_mount *mp, struct xfs_perag *pag,
+	unsigned discards);
 
 int
 xfs_extent_busy_ag_cmp(void *priv, struct list_head *a, struct list_head *b);
