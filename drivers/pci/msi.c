@@ -1507,33 +1507,6 @@ void pci_msi_domain_free_irqs(struct irq_domain *domain, struct pci_dev *dev)
 	msi_domain_free_irqs(domain, &dev->dev);
 }
 
-/**
- * pci_msi_create_default_irq_domain - Create a default MSI interrupt domain
- * @fwnode:	Optional fwnode of the interrupt controller
- * @info:	MSI domain info
- * @parent:	Parent irq domain
- *
- * Returns: A domain pointer or NULL in case of failure. If successful
- * the default PCI/MSI irqdomain pointer is updated.
- */
-struct irq_domain *pci_msi_create_default_irq_domain(struct fwnode_handle *fwnode,
-		struct msi_domain_info *info, struct irq_domain *parent)
-{
-	struct irq_domain *domain;
-
-	mutex_lock(&pci_msi_domain_lock);
-	if (pci_msi_default_domain) {
-		pr_err("PCI: default irq domain for PCI MSI has already been created.\n");
-		domain = NULL;
-	} else {
-		domain = pci_msi_create_irq_domain(fwnode, info, parent);
-		pci_msi_default_domain = domain;
-	}
-	mutex_unlock(&pci_msi_domain_lock);
-
-	return domain;
-}
-
 static int get_msi_id_cb(struct pci_dev *pdev, u16 alias, void *data)
 {
 	u32 *pa = data;
