@@ -754,7 +754,7 @@ static bool blk_mq_attempt_merge(struct request_queue *q,
 	int checked = 8;
 
 	list_for_each_entry_reverse(rq, &ctx->rq_list, queuelist) {
-		int el_ret;
+		bool merged = false;
 
 		if (!checked--)
 			break;
@@ -762,20 +762,20 @@ static bool blk_mq_attempt_merge(struct request_queue *q,
 		if (!blk_rq_merge_ok(rq, bio))
 			continue;
 
-		el_ret = blk_try_merge(rq, bio);
-		if (el_ret == ELEVATOR_BACK_MERGE) {
-			if (bio_attempt_back_merge(q, rq, bio)) {
-				ctx->rq_merged++;
-				return true;
-			}
+		switch (blk_try_merge(rq, bio)) {
+		case ELEVATOR_NO_MERGE:
+			continue;
+		case ELEVATOR_BACK_MERGE:
+			merged = bio_attempt_back_merge(q, rq, bio);
 			break;
-		} else if (el_ret == ELEVATOR_FRONT_MERGE) {
-			if (bio_attempt_front_merge(q, rq, bio)) {
-				ctx->rq_merged++;
-				return true;
-			}
+		case ELEVATOR_FRONT_MERGE:
+			merged = bio_attempt_front_merge(q, rq, bio);
 			break;
 		}
+
+		if (merged)
+			ctx->rq_merged++;
+		return merged;
 	}
 
 	return false;

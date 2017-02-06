@@ -9,6 +9,15 @@
 struct io_cq;
 struct elevator_type;
 
+/*
+ * Return values from elevator merger
+ */
+enum elv_merge {
+	ELEVATOR_NO_MERGE	= 0,
+	ELEVATOR_FRONT_MERGE	= 1,
+	ELEVATOR_BACK_MERGE	= 2,
+};
+
 typedef int (elevator_merge_fn) (struct request_queue *, struct request **,
 				 struct bio *);
 
@@ -133,7 +142,8 @@ extern void elv_dispatch_sort(struct request_queue *, struct request *);
 extern void elv_dispatch_add_tail(struct request_queue *, struct request *);
 extern void elv_add_request(struct request_queue *, struct request *, int);
 extern void __elv_add_request(struct request_queue *, struct request *, int);
-extern int elv_merge(struct request_queue *, struct request **, struct bio *);
+extern enum elv_merge elv_merge(struct request_queue *, struct request **,
+		struct bio *);
 extern void elv_merge_requests(struct request_queue *, struct request *,
 			       struct request *);
 extern void elv_merged_request(struct request_queue *, struct request *, int);
@@ -183,13 +193,6 @@ extern struct request *elv_rb_latter_request(struct request_queue *, struct requ
 extern void elv_rb_add(struct rb_root *, struct request *);
 extern void elv_rb_del(struct rb_root *, struct request *);
 extern struct request *elv_rb_find(struct rb_root *, sector_t);
-
-/*
- * Return values from elevator merger
- */
-#define ELEVATOR_NO_MERGE	0
-#define ELEVATOR_FRONT_MERGE	1
-#define ELEVATOR_BACK_MERGE	2
 
 /*
  * Insertion selection
