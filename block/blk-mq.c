@@ -771,6 +771,9 @@ static bool blk_mq_attempt_merge(struct request_queue *q,
 		case ELEVATOR_FRONT_MERGE:
 			merged = bio_attempt_front_merge(q, rq, bio);
 			break;
+		case ELEVATOR_DISCARD_MERGE:
+			merged = bio_attempt_discard_merge(q, rq, bio);
+			break;
 		}
 
 		if (merged)
