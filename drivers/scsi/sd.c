@@ -371,6 +371,7 @@ static const char *lbp_mode[] = {
 	[SD_LBP_WS16]		= "writesame_16",
 	[SD_LBP_WS10]		= "writesame_10",
 	[SD_LBP_ZERO]		= "writesame_zero",
+	[SD_LBP_ATA_TRIM]	= "ata_trim",
 	[SD_LBP_DISABLE]	= "disabled",
 };
 
@@ -411,7 +412,7 @@ provisioning_mode_store(struct device *dev, struct device_attribute *attr,
 		sd_config_discard(sdkp, SD_LBP_ZERO);
 	else if (!strncmp(buf, lbp_mode[SD_LBP_DISABLE], 20))
 		sd_config_discard(sdkp, SD_LBP_DISABLE);
-	else
+	else /* we don't allow manual setting of SD_LBP_ATA_TRIM */
 		return -EINVAL;
 
 	return count;
@@ -653,7 +654,7 @@ static void sd_config_discard(struct scsi_disk *sdkp, unsigned int mode)
 	 * lead to data corruption. If LBPRZ is not set, we honor the
 	 * device preference.
 	 */
-	if (sdkp->lbprz) {
+	if (sdkp->lbprz || sdkp->device->ata_trim) {
 		q->limits.discard_alignment = 0;
 		q->limits.discard_granularity = logical_block_size;
 	} else {
@@ -694,6 +695,12 @@ static void sd_config_discard(struct scsi_disk *sdkp, unsigned int mode)
 		max_blocks = min_not_zero(sdkp->max_ws_blocks,
 					  (u32)SD_MAX_WS10_BLOCKS);
 		q->limits.discard_zeroes_data = 1;
+		break;
+
+	case SD_LBP_ATA_TRIM:
+		max_blocks = 65535 * (512 / sizeof(__le64));
+		if (sdkp->device->ata_trim_zeroes_data)
+			q->limits.discard_zeroes_data = 1;
 		break;
 	}
 
@@ -785,6 +792,49 @@ static int sd_setup_write_same10_cmnd(struct scsi_cmnd *cmd, bool unmap)
 		cmd->cmnd[1] = 0x8; /* UNMAP */
 	put_unaligned_be32(sector, &cmd->cmnd[2]);
 	put_unaligned_be16(nr_sectors, &cmd->cmnd[7]);
+
+	cmd->allowed = SD_MAX_RETRIES;
+	cmd->transfersize = data_len;
+	rq->timeout = SD_TIMEOUT;
+	scsi_req(rq)->resid_len = data_len;
+
+	return scsi_init_io(cmd);
+}
+
+static int sd_setup_ata_trim_cmnd(struct scsi_cmnd *cmd)
+{
+	struct scsi_device *sdp = cmd->device;
+	struct request *rq = cmd->request;
+	u64 sector = blk_rq_pos(rq) >> (ilog2(sdp->sector_size) - 9);
+	u32 nr_sectors = blk_rq_sectors(rq) >> (ilog2(sdp->sector_size) - 9);
+	u32 data_len = sdp->sector_size, i;
+	__le64 *buf;
+
+	rq->special_vec.bv_page = alloc_page(GFP_ATOMIC | __GFP_ZERO);
+	if (!rq->special_vec.bv_page)
+		return BLKPREP_DEFER;
+	rq->special_vec.bv_offset = 0;
+	rq->special_vec.bv_len = data_len;
+	rq->rq_flags |= RQF_SPECIAL_PAYLOAD;
+
+	/*
+	 * Use the Linux Vendor Specific TRIM command to pass the TRIM payload
+	 * to libata.
+	 */
+	cmd->cmd_len = 10;
+	cmd->cmnd[0] = LINUX_VS_TRIM;
+	cmd->cmnd[8] = data_len;
+
+	buf = page_address(rq->special_vec.bv_page);
+	for (i = 0; i < (data_len >> 3); i++) {
+		u64 n = min(nr_sectors, 0xffffu);
+
+		buf[i] = cpu_to_le64(sector | (n << 48));
+		if (nr_sectors <= 0xffff)
+			break;
+		sector += 0xffff;
+		nr_sectors -= 0xffff;
+	}
 
 	cmd->allowed = SD_MAX_RETRIES;
 	cmd->transfersize = data_len;
@@ -1168,6 +1218,8 @@ static int sd_init_command(struct scsi_cmnd *cmd)
 			return sd_setup_write_same10_cmnd(cmd, true);
 		case SD_LBP_ZERO:
 			return sd_setup_write_same10_cmnd(cmd, false);
+		case SD_LBP_ATA_TRIM:
+			return sd_setup_ata_trim_cmnd(cmd);
 		default:
 			return BLKPREP_INVALID;
 		}
@@ -2739,7 +2791,9 @@ static void sd_read_block_limits(struct scsi_disk *sdkp)
 	sdkp->max_xfer_blocks = get_unaligned_be32(&buffer[8]);
 	sdkp->opt_xfer_blocks = get_unaligned_be32(&buffer[12]);
 
-	if (buffer[3] == 0x3c) {
+	if (sdkp->device->ata_trim) {
+		sd_config_discard(sdkp, SD_LBP_ATA_TRIM);
+	} else if (buffer[3] == 0x3c) {
 		unsigned int lba_count, desc_count;
 
 		sdkp->max_ws_blocks = (u32)get_unaligned_be64(&buffer[36]);

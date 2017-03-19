@@ -169,6 +169,9 @@
 /* Vendor specific CDBs start here */
 #define VENDOR_SPECIFIC_CDB 0xc0
 
+/* used to pass the TRIM payload to libata with rewriting it: */
+#define LINUX_VS_TRIM		VENDOR_SPECIFIC_CDB
+
 /*
  *	SCSI command lengths
  */

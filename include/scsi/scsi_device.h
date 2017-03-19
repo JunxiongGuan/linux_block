@@ -182,6 +182,8 @@ struct scsi_device {
 	unsigned broken_fua:1;		/* Don't set FUA bit */
 	unsigned lun_in_cdb:1;		/* Store LUN bits in CDB[1] */
 	unsigned synchronous_alua:1;	/* Synchronous ALUA commands */
+	unsigned ata_trim:1;		/* use ATA TRIM payload for discard */
+	unsigned ata_trim_zeroes_data:1;/* ATA TRIM zeroes discard blocks */
 
 	atomic_t disk_events_disable_depth; /* disable depth for disk events */
 
