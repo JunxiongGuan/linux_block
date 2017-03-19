@@ -11,6 +11,15 @@
 
 #include "blk.h"
 
+/*
+ * Split a discard bio if it doesn't fit into the overall discard request size
+ * of the device.  Note that we don't split it here if it's over the maximum
+ * discard segment size to avoid creating way too many bios in that case.
+ * We will simply take care of never merging such a larger than segment size
+ * bio into a request that has other bios, and let the low-level driver take
+ * care of splitting the request into multiple ranges in the on the wire
+ * format.
+ */
 static struct bio *blk_bio_discard_split(struct request_queue *q,
 					 struct bio *bio,
 					 struct bio_set *bs,

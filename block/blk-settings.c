@@ -93,6 +93,7 @@ void blk_set_default_limits(struct queue_limits *lim)
 	lim->seg_boundary_mask = BLK_SEG_BOUNDARY_MASK;
 	lim->virt_boundary_mask = 0;
 	lim->max_segment_size = BLK_MAX_SEGMENT_SIZE;
+	lim->max_discard_segment_size = UINT_MAX;
 	lim->max_sectors = lim->max_hw_sectors = BLK_SAFE_MAX_SECTORS;
 	lim->max_dev_sectors = 0;
 	lim->chunk_sectors = 0;
@@ -132,6 +133,7 @@ void blk_set_stacking_limits(struct queue_limits *lim)
 	lim->max_discard_segments = 1;
 	lim->max_hw_sectors = UINT_MAX;
 	lim->max_segment_size = UINT_MAX;
+	lim->max_discard_segment_size = UINT_MAX;
 	lim->max_sectors = UINT_MAX;
 	lim->max_dev_sectors = UINT_MAX;
 	lim->max_write_same_sectors = UINT_MAX;
@@ -374,6 +376,18 @@ void blk_queue_max_segment_size(struct request_queue *q, unsigned int max_size)
 	q->limits.max_segment_size = max_size;
 }
 EXPORT_SYMBOL(blk_queue_max_segment_size);
+
+/**
+ * blk_queue_max_discard_segment_size - set max segment size for discards
+ * @q:  the request queue for the device
+ * @max_size:  max size of a discard segment in bytes
+ **/
+void blk_queue_max_discard_segment_size(struct request_queue *q,
+		unsigned int max_size)
+{
+	q->limits.max_discard_segment_size = max_size;
+}
+EXPORT_SYMBOL_GPL(blk_queue_max_discard_segment_size);
 
 /**
  * blk_queue_logical_block_size - set logical block size for the queue

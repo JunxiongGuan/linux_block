@@ -1486,9 +1486,15 @@ bool bio_attempt_discard_merge(struct request_queue *q, struct request *req,
 		struct bio *bio)
 {
 	unsigned short segments = blk_rq_nr_discard_segments(req);
+	unsigned max_segment_sectors = queue_max_discard_segment_size(q) >> 9;
 
 	if (segments >= queue_max_discard_segments(q))
 		goto no_merge;
+	if (blk_rq_sectors(req) > max_segment_sectors)
+		goto no_merge;
+	if (bio_sectors(bio) > max_segment_sectors)
+		goto no_merge;
+
 	if (blk_rq_sectors(req) + bio_sectors(bio) >
 	    blk_rq_get_max_sectors(req, blk_rq_pos(req)))
 		goto no_merge;

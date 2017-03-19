@@ -333,6 +333,7 @@ struct queue_limits {
 	unsigned short		max_segments;
 	unsigned short		max_integrity_segments;
 	unsigned short		max_discard_segments;
+	unsigned int		max_discard_segment_size;
 
 	unsigned char		misaligned;
 	unsigned char		discard_misaligned;
@@ -1150,6 +1151,8 @@ extern void blk_queue_max_segments(struct request_queue *, unsigned short);
 extern void blk_queue_max_discard_segments(struct request_queue *,
 		unsigned short);
 extern void blk_queue_max_segment_size(struct request_queue *, unsigned int);
+extern void blk_queue_max_discard_segment_size(struct request_queue *,
+		unsigned int);
 extern void blk_queue_max_discard_sectors(struct request_queue *q,
 		unsigned int max_discard_sectors);
 extern void blk_queue_max_write_same_sectors(struct request_queue *q,
@@ -1413,6 +1416,11 @@ static inline unsigned short queue_max_discard_segments(struct request_queue *q)
 static inline unsigned int queue_max_segment_size(struct request_queue *q)
 {
 	return q->limits.max_segment_size;
+}
+
+static inline unsigned int queue_max_discard_segment_size(struct request_queue *q)
+{
+	return q->limits.max_discard_segment_size;
 }
 
 static inline unsigned short queue_logical_block_size(struct request_queue *q)
