@@ -382,7 +382,6 @@ static int raid0_run(struct mddev *mddev)
 		bool discard_supported = false;
 
 		blk_queue_max_hw_sectors(mddev->queue, mddev->chunk_sectors);
-		blk_queue_max_write_same_sectors(mddev->queue, mddev->chunk_sectors);
 		blk_queue_max_write_zeroes_sectors(mddev->queue, mddev->chunk_sectors);
 		blk_queue_max_discard_sectors(mddev->queue, mddev->chunk_sectors);
 
@@ -504,7 +503,6 @@ static void raid0_make_request(struct mddev *mddev, struct bio *bio)
 				trace_block_bio_remap(bdev_get_queue(split->bi_bdev),
 						      split, disk_devt(mddev->gendisk),
 						      bio_sector);
-			mddev_check_writesame(mddev, split);
 			mddev_check_write_zeroes(mddev, split);
 			generic_make_request(split);
 		}

@@ -7262,7 +7262,6 @@ static int raid5_run(struct mddev *mddev)
 		blk_queue_max_discard_sectors(mddev->queue,
 					      0xfffe * STRIPE_SECTORS);
 
-		blk_queue_max_write_same_sectors(mddev->queue, 0);
 		blk_queue_max_write_zeroes_sectors(mddev->queue, 0);
 
 		rdev_for_each(rdev, mddev) {
