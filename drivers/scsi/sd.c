@@ -756,7 +756,7 @@ static int sd_setup_write_same16_cmnd(struct scsi_cmnd *cmd)
 	u32 nr_sectors = blk_rq_sectors(rq) >> (ilog2(sdp->sector_size) - 9);
 	u32 data_len = sdp->sector_size;
 
-	rq->special_vec.bv_page = alloc_page(GFP_ATOMIC | __GFP_ZERO);
+	rq->special_vec.bv_page = ZERO_PAGE(0);
 	if (!rq->special_vec.bv_page)
 		return BLKPREP_DEFER;
 	rq->special_vec.bv_offset = 0;
@@ -785,7 +785,7 @@ static int sd_setup_write_same10_cmnd(struct scsi_cmnd *cmd, bool unmap)
 	u32 nr_sectors = blk_rq_sectors(rq) >> (ilog2(sdp->sector_size) - 9);
 	u32 data_len = sdp->sector_size;
 
-	rq->special_vec.bv_page = alloc_page(GFP_ATOMIC | __GFP_ZERO);
+	rq->special_vec.bv_page = ZERO_PAGE(0);
 	if (!rq->special_vec.bv_page)
 		return BLKPREP_DEFER;
 	rq->special_vec.bv_offset = 0;
@@ -1256,7 +1256,8 @@ static void sd_uninit_command(struct scsi_cmnd *SCpnt)
 {
 	struct request *rq = SCpnt->request;
 
-	if (rq->rq_flags & RQF_SPECIAL_PAYLOAD)
+	if ((rq->rq_flags & RQF_SPECIAL_PAYLOAD) &&
+	    rq->special_vec.bv_page != ZERO_PAGE(0))
 		__free_page(rq->special_vec.bv_page);
 
 	if (SCpnt->cmnd != scsi_req(rq)->cmd) {
