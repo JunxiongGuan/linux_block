@@ -171,10 +171,8 @@ enum req_opf {
 	REQ_OP_SECURE_ERASE	= 5,
 	/* seset a zone write pointer */
 	REQ_OP_ZONE_RESET	= 6,
-	/* write the same sector many times */
-	REQ_OP_WRITE_SAME	= 7,
 	/* write the zero filled sector many times */
-	REQ_OP_WRITE_ZEROES	= 9,
+	REQ_OP_WRITE_ZEROES	= 7,
 
 	/* SCSI passthrough using struct scsi_request */
 	REQ_OP_SCSI_IN		= 32,
