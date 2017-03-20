@@ -1459,18 +1459,6 @@ static void drbd_issue_peer_discard(struct drbd_device *device, struct drbd_peer
 	drbd_endio_write_sec_final(peer_req);
 }
 
-static void drbd_issue_peer_wsame(struct drbd_device *device,
-				  struct drbd_peer_request *peer_req)
-{
-	struct block_device *bdev = device->ldev->backing_bdev;
-	sector_t s = peer_req->i.sector;
-	sector_t nr = peer_req->i.size >> 9;
-	if (blkdev_issue_write_same(bdev, s, nr, GFP_NOIO, peer_req->pages))
-		peer_req->flags |= EE_WAS_ERROR;
-	drbd_endio_write_sec_final(peer_req);
-}
-
-
 /**
  * drbd_submit_peer_request()
  * @device:	DRBD device.
@@ -1508,7 +1496,7 @@ int drbd_submit_peer_request(struct drbd_device *device,
 	 * Correctness first, performance later.  Next step is to code an
 	 * asynchronous variant of the same.
 	 */
-	if (peer_req->flags & (EE_IS_TRIM|EE_WRITE_SAME)) {
+	if (peer_req->flags & EE_IS_TRIM) {
 		/* wait for all pending IO completions, before we start
 		 * zeroing things out. */
 		conn_wait_active_ee_empty(peer_req->peer_device->connection);
@@ -1527,8 +1515,6 @@ int drbd_submit_peer_request(struct drbd_device *device,
 
 		if (peer_req->flags & EE_IS_TRIM)
 			drbd_issue_peer_discard(device, peer_req);
-		else /* EE_WRITE_SAME */
-			drbd_issue_peer_wsame(device, peer_req);
 		return 0;
 	}
 
@@ -1723,7 +1709,6 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	void *dig_vv = peer_device->connection->int_dig_vv;
 	unsigned long *data;
 	struct p_trim *trim = (pi->cmd == P_TRIM) ? pi->data : NULL;
-	struct p_trim *wsame = (pi->cmd == P_WSAME) ? pi->data : NULL;
 
 	digest_size = 0;
 	if (!trim && peer_device->connection->peer_integrity_tfm) {
@@ -1738,29 +1723,17 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 		data_size -= digest_size;
 	}
 
-	/* assume request_size == data_size, but special case trim and wsame. */
+	/* assume request_size == data_size, but special case trim. */
 	ds = data_size;
 	if (trim) {
 		if (!expect(data_size == 0))
 			return NULL;
 		ds = be32_to_cpu(trim->size);
-	} else if (wsame) {
-		if (data_size != queue_logical_block_size(device->rq_queue)) {
-			drbd_err(peer_device, "data size (%u) != drbd logical block size (%u)\n",
-				data_size, queue_logical_block_size(device->rq_queue));
-			return NULL;
-		}
-		if (data_size != bdev_logical_block_size(device->ldev->backing_bdev)) {
-			drbd_err(peer_device, "data size (%u) != backend logical block size (%u)\n",
-				data_size, bdev_logical_block_size(device->ldev->backing_bdev));
-			return NULL;
-		}
-		ds = be32_to_cpu(wsame->size);
 	}
 
 	if (!expect(IS_ALIGNED(ds, 512)))
 		return NULL;
-	if (trim || wsame) {
+	if (trim) {
 		if (!expect(ds <= (DRBD_MAX_BBIO_SECTORS << 9)))
 			return NULL;
 	} else if (!expect(ds <= DRBD_MAX_BIO_SIZE))
@@ -1788,8 +1761,6 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 		peer_req->flags |= EE_IS_TRIM;
 		return peer_req;
 	}
-	if (wsame)
-		peer_req->flags |= EE_WRITE_SAME;
 
 	/* receive payload size bytes into page chain */
 	ds = data_size;
@@ -2545,7 +2516,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	 * we wait for all pending requests, respectively wait for
 	 * active_ee to become empty in drbd_submit_peer_request();
 	 * better not add ourselves here. */
-	if ((peer_req->flags & (EE_IS_TRIM|EE_WRITE_SAME)) == 0)
+	if ((peer_req->flags & EE_IS_TRIM) == 0)
 		list_add_tail(&peer_req->w.list, &device->active_ee);
 	spin_unlock_irq(&device->resource->req_lock);
 
@@ -4869,7 +4840,6 @@ static struct data_cmd drbd_cmd_handler[] = {
 	[P_PROTOCOL_UPDATE] = { 1, sizeof(struct p_protocol), receive_protocol },
 	[P_TRIM]	    = { 0, sizeof(struct p_trim), receive_Data },
 	[P_RS_DEALLOCATED]  = { 0, sizeof(struct p_block_desc), receive_rs_deallocated },
-	[P_WSAME]	    = { 1, sizeof(struct p_wsame), receive_Data },
 };
 
 static void drbdd(struct drbd_connection *connection)

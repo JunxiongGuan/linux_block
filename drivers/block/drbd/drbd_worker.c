@@ -330,10 +330,6 @@ void drbd_csum_bio(struct crypto_ahash *tfm, struct bio *bio, void *digest)
 		sg_set_page(&sg, bvec.bv_page, bvec.bv_len, bvec.bv_offset);
 		ahash_request_set_crypt(req, &sg, NULL, sg.length);
 		crypto_ahash_update(req);
-		/* REQ_OP_WRITE_SAME has only one segment,
-		 * checksum the payload only once. */
-		if (bio_op(bio) == REQ_OP_WRITE_SAME)
-			break;
 	}
 	ahash_request_set_crypt(req, NULL, digest, 0);
 	crypto_ahash_final(req);
