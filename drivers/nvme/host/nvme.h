@@ -89,6 +89,7 @@ enum nvme_quirks {
  */
 struct nvme_request {
 	struct nvme_command	*cmd;
+	u8			retries;
 	union nvme_result	result;
 };
 
