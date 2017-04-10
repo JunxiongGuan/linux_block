@@ -299,9 +299,6 @@ static void dm_done(struct request *clone, int error, bool mapped)
 	}
 
 	if (unlikely(r == -EREMOTEIO)) {
-		if (req_op(clone) == REQ_OP_WRITE_SAME &&
-		    !clone->q->limits.max_write_same_sectors)
-			disable_write_same(tio->md);
 		if (req_op(clone) == REQ_OP_WRITE_ZEROES &&
 		    !clone->q->limits.max_write_zeroes_sectors)
 			disable_write_zeroes(tio->md);

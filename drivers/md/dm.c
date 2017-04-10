@@ -816,14 +816,6 @@ static void dec_pending(struct dm_io *io, int error)
 	}
 }
 
-void disable_write_same(struct mapped_device *md)
-{
-	struct queue_limits *limits = dm_get_queue_limits(md);
-
-	/* device doesn't really support WRITE SAME, disable it */
-	limits->max_write_same_sectors = 0;
-}
-
 void disable_write_zeroes(struct mapped_device *md)
 {
 	struct queue_limits *limits = dm_get_queue_limits(md);
@@ -859,9 +851,6 @@ static void clone_endio(struct bio *bio)
 	}
 
 	if (unlikely(r == -EREMOTEIO)) {
-		if (bio_op(bio) == REQ_OP_WRITE_SAME &&
-		    !bdev_get_queue(bio->bi_bdev)->limits.max_write_same_sectors)
-			disable_write_same(md);
 		if (bio_op(bio) == REQ_OP_WRITE_ZEROES &&
 		    !bdev_get_queue(bio->bi_bdev)->limits.max_write_zeroes_sectors)
 			disable_write_zeroes(md);
@@ -1209,11 +1198,6 @@ static unsigned get_num_discard_bios(struct dm_target *ti)
 	return ti->num_discard_bios;
 }
 
-static unsigned get_num_write_same_bios(struct dm_target *ti)
-{
-	return ti->num_write_same_bios;
-}
-
 static unsigned get_num_write_zeroes_bios(struct dm_target *ti)
 {
 	return ti->num_write_zeroes_bios;
@@ -1268,11 +1252,6 @@ static int __send_discard(struct clone_info *ci)
 					   is_split_required_for_discard);
 }
 
-static int __send_write_same(struct clone_info *ci)
-{
-	return __send_changing_extent_only(ci, get_num_write_same_bios, NULL);
-}
-
 static int __send_write_zeroes(struct clone_info *ci)
 {
 	return __send_changing_extent_only(ci, get_num_write_zeroes_bios, NULL);
@@ -1290,8 +1269,6 @@ static int __split_and_process_non_flush(struct clone_info *ci)
 
 	if (unlikely(bio_op(bio) == REQ_OP_DISCARD))
 		return __send_discard(ci);
-	else if (unlikely(bio_op(bio) == REQ_OP_WRITE_SAME))
-		return __send_write_same(ci);
 	else if (unlikely(bio_op(bio) == REQ_OP_WRITE_ZEROES))
 		return __send_write_zeroes(ci);
 
