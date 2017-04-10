@@ -83,13 +83,6 @@ static inline bool bio_has_data(struct bio *bio)
 	return false;
 }
 
-static inline bool bio_no_advance_iter(struct bio *bio)
-{
-	return bio_op(bio) == REQ_OP_DISCARD ||
-	       bio_op(bio) == REQ_OP_SECURE_ERASE ||
-	       bio_op(bio) == REQ_OP_WRITE_ZEROES;
-}
-
 static inline bool bio_mergeable(struct bio *bio)
 {
 	if (bio->bi_opf & REQ_NOMERGE_FLAGS)
@@ -165,10 +158,10 @@ static inline void bio_advance_iter(struct bio *bio, struct bvec_iter *iter,
 {
 	iter->bi_sector += bytes >> 9;
 
-	if (bio_no_advance_iter(bio))
-		iter->bi_size -= bytes;
-	else
+	if (bio_has_data(bio))
 		bvec_iter_advance(bio->bi_io_vec, iter, bytes);
+	else
+		iter->bi_size -= bytes;
 }
 
 #define __bio_for_each_segment(bvl, bio, iter, start)			\
