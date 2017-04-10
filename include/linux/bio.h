@@ -178,25 +178,14 @@ static inline void bio_advance_iter(struct bio *bio, struct bvec_iter *iter,
 static inline unsigned __bio_segments(struct bio *bio, struct bvec_iter *bvec)
 {
 	unsigned segs = 0;
-	struct bio_vec bv;
-	struct bvec_iter iter;
 
-	/*
-	 * We special case discard/write same/write zeroes, because they
-	 * interpret bi_size differently:
-	 */
+	if (bio_has_data(bio)) {
+		struct bio_vec bv;
+		struct bvec_iter iter;
 
-	switch (bio_op(bio)) {
-	case REQ_OP_DISCARD:
-	case REQ_OP_SECURE_ERASE:
-	case REQ_OP_WRITE_ZEROES:
-		return 0;
-	default:
-		break;
+		__bio_for_each_segment(bv, bio, iter, *bvec)
+			segs++;
 	}
-
-	__bio_for_each_segment(bv, bio, iter, *bvec)
-		segs++;
 
 	return segs;
 }

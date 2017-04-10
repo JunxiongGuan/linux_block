@@ -232,15 +232,8 @@ static unsigned int __blk_recalc_rq_segments(struct request_queue *q,
 	struct bio *fbio, *bbio;
 	struct bvec_iter iter;
 
-	if (!bio)
+	if (!bio || !bio_has_data(bio))
 		return 0;
-
-	switch (bio_op(bio)) {
-	case REQ_OP_DISCARD:
-	case REQ_OP_SECURE_ERASE:
-	case REQ_OP_WRITE_ZEROES:
-		return 0;
-	}
 
 	fbio = bio;
 	cluster = blk_queue_cluster(q);
