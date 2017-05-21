@@ -37,11 +37,6 @@ static pci_ers_result_t aer_error_detected(struct pci_dev *dev,
 static void aer_error_resume(struct pci_dev *dev);
 static pci_ers_result_t aer_root_reset(struct pci_dev *dev);
 
-static const struct pci_error_handlers aer_error_handlers = {
-	.error_detected = aer_error_detected,
-	.resume		= aer_error_resume,
-};
-
 static struct pcie_port_service_driver aerdriver = {
 	.name		= "aer",
 	.port_type	= PCI_EXP_TYPE_ROOT_PORT,
@@ -49,9 +44,8 @@ static struct pcie_port_service_driver aerdriver = {
 
 	.probe		= aer_probe,
 	.remove		= aer_remove,
-
-	.err_handler	= &aer_error_handlers,
-
+	.error_detected = aer_error_detected,
+	.error_resume	= aer_error_resume,
 	.reset_link	= aer_root_reset,
 };
 
