@@ -1,8 +1,36 @@
 
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/cpu.h>
+#include "internals.h"
+
+bool irq_affinity_set(int irq, struct irq_desc *desc, const cpumask_t *mask)
+{
+	struct irq_data *data = irq_desc_get_irq_data(desc);
+	struct irq_chip *chip = irq_data_get_irq_chip(data);
+	bool ret = false;
+
+	if (!irq_can_move_pcntxt(data) && chip->irq_mask)
+		chip->irq_mask(data);
+
+	if (chip->irq_set_affinity) {
+		if (chip->irq_set_affinity(data, mask, true) == -ENOSPC)
+			pr_crit("IRQ %d set affinity failed because there are no available vectors.  The device assigned to this IRQ is unstable.\n", irq);
+		ret = true;
+	}
+
+	/*
+	 * We unmask if the irq was not marked masked by the core code.
+	 * That respects the lazy irq disable behaviour.
+	 */
+	if (!irq_can_move_pcntxt(data) &&
+	    !irqd_irq_masked(data) && chip->irq_unmask)
+		chip->irq_unmask(data);
+
+	return ret;
+}
 
 static void irq_spread_init_one(struct cpumask *irqmsk, struct cpumask *nmsk,
 				int cpus_per_vec)

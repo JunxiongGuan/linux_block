@@ -437,7 +437,6 @@ void fixup_irqs(void)
 	struct irq_desc *desc;
 	struct irq_data *data;
 	struct irq_chip *chip;
-	int ret;
 
 	for_each_irq_desc(irq, desc) {
 		int break_affinity = 0;
@@ -482,26 +481,8 @@ void fixup_irqs(void)
 			continue;
 		}
 
-		if (!irqd_can_move_in_process_context(data) && chip->irq_mask)
-			chip->irq_mask(data);
-
-		if (chip->irq_set_affinity) {
-			ret = chip->irq_set_affinity(data, affinity, true);
-			if (ret == -ENOSPC)
-				pr_crit("IRQ %d set affinity failed because there are no available vectors.  The device assigned to this IRQ is unstable.\n", irq);
-		} else {
-			if (!(warned++))
-				set_affinity = 0;
-		}
-
-		/*
-		 * We unmask if the irq was not marked masked by the
-		 * core code. That respects the lazy irq disable
-		 * behaviour.
-		 */
-		if (!irqd_can_move_in_process_context(data) &&
-		    !irqd_irq_masked(data) && chip->irq_unmask)
-			chip->irq_unmask(data);
+		if (!irq_affinity_set(irq, desc, affinity) && !warned++)
+			set_affinity = 0;
 
 		raw_spin_unlock(&desc->lock);
 
