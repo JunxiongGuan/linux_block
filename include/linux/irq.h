@@ -216,6 +216,7 @@ enum {
 	IRQD_WAKEUP_ARMED		= (1 << 19),
 	IRQD_FORWARDED_TO_VCPU		= (1 << 20),
 	IRQD_AFFINITY_MANAGED		= (1 << 21),
+	IRQD_AFFINITY_SUSPENDED		= (1 << 22),
 };
 
 #define __irqd_to_state(d) ACCESS_PRIVATE((d)->common, state_use_accessors)
@@ -327,6 +328,11 @@ static inline void irqd_set_activated(struct irq_data *d)
 static inline void irqd_clr_activated(struct irq_data *d)
 {
 	__irqd_to_state(d) &= ~IRQD_ACTIVATED;
+}
+
+static inline bool irqd_affinity_is_suspended(struct irq_data *d)
+{
+	return __irqd_to_state(d) & IRQD_AFFINITY_SUSPENDED;
 }
 
 #undef __irqd_to_state
@@ -1024,5 +1030,8 @@ int __ipi_send_single(struct irq_desc *desc, unsigned int cpu);
 int __ipi_send_mask(struct irq_desc *desc, const struct cpumask *dest);
 int ipi_send_single(unsigned int virq, unsigned int cpu);
 int ipi_send_mask(unsigned int virq, const struct cpumask *dest);
+
+int irq_affinity_online_cpu(unsigned int cpu);
+int irq_affinity_offline_cpu(unsigned int cpu);
 
 #endif /* _LINUX_IRQ_H */
