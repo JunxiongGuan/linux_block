@@ -133,13 +133,15 @@ struct nvme_ctrl {
 	struct ida ns_ida;
 	struct work_struct reset_work;
 
+	struct nvme_subsystem *subsys;
+	struct list_head subsys_entry;
+
 	struct opal_dev *opal_dev;
 
 	char name[12];
 	char serial[20];
 	char model[40];
 	char firmware_rev[8];
-	char subnqn[NVMF_NQN_SIZE];
 	u16 cntlid;
 
 	u32 ctrl_config;
@@ -186,6 +188,14 @@ struct nvme_ctrl {
 	u16 maxcmd;
 	int nr_reconnects;
 	struct nvmf_ctrl_options *opts;
+};
+
+struct nvme_subsystem {
+	struct list_head	entry;
+	struct mutex		lock;
+	struct list_head	ctrls;
+	struct kref		ref;
+	char			subnqn[NVMF_NQN_SIZE];
 };
 
 struct nvme_ns {
