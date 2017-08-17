@@ -194,8 +194,27 @@ struct nvme_subsystem {
 	struct list_head	entry;
 	struct mutex		lock;
 	struct list_head	ctrls;
+	struct list_head	nsheads;
 	struct kref		ref;
 	char			subnqn[NVMF_NQN_SIZE];
+};
+
+/*
+ * Anchor structure for namespaces.  There is one for each namespace in a
+ * NVMe subsystem that any of our controllers can see, and the namespace
+ * structure for each controller is chained of it.  For private namespaces
+ * there is a 1:1 relation to our namespace structures, that is ->list
+ * only ever has a single entry for private namespaces.
+ */
+struct nvme_ns_head {
+	struct list_head	list;
+	struct srcu_struct      srcu;
+	unsigned		ns_id;
+	u8			eui64[8];
+	u8			nguid[16];
+	uuid_t			uuid;
+	struct list_head	entry;
+	struct kref		ref;
 };
 
 struct nvme_ns {
@@ -204,15 +223,12 @@ struct nvme_ns {
 	struct nvme_ctrl *ctrl;
 	struct request_queue *queue;
 	struct gendisk *disk;
+	struct list_head siblings;
 	struct nvm_dev *ndev;
 	struct kref kref;
+	struct nvme_ns_head *head;
 	int instance;
 
-	u8 eui[8];
-	u8 nguid[16];
-	uuid_t uuid;
-
-	unsigned ns_id;
 	int lba_shift;
 	u16 ms;
 	u16 sgs;
