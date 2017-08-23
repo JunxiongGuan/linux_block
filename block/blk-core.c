@@ -2224,6 +2224,32 @@ out:
 }
 EXPORT_SYMBOL(generic_make_request);
 
+/*
+ * Fast-path version of generic_make_request.  The caller must ensure that
+ * generic_make_request_checks has already been called with the limits that
+ * fit the queue, and no recursion prevention is provided.
+ */
+blk_qc_t generic_make_request_fast(struct bio *bio)
+{
+	struct request_queue *q = bio->bi_disk->queue;
+	bool nowait = bio->bi_opf & REQ_NOWAIT;
+	blk_qc_t ret = BLK_QC_T_NONE;
+
+	if (unlikely(blk_queue_enter(q, nowait))) {
+		if (nowait && !blk_queue_dying(q))
+			bio->bi_status = BLK_STS_AGAIN;
+		else
+			bio->bi_status = BLK_STS_IOERR;
+		bio_endio(bio);
+		return BLK_QC_T_NONE;
+	}
+
+	ret = q->make_request_fn(q, bio);
+	blk_queue_exit(q);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(generic_make_request_fast);
+
 /**
  * submit_bio - submit a bio to the block device layer for I/O
  * @bio: The &struct bio which describes the I/O
