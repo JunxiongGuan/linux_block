@@ -207,14 +207,20 @@ struct nvme_subsystem {
  * only ever has a single entry for private namespaces.
  */
 struct nvme_ns_head {
+	struct nvme_ns		*current_path;
+	struct gendisk		*disk;
 	struct list_head	list;
 	struct srcu_struct      srcu;
+	struct bio_list		requeue_list;
+	spinlock_t		requeue_lock;
+	struct work_struct	requeue_work;
 	unsigned		ns_id;
 	u8			eui64[8];
 	u8			nguid[16];
 	uuid_t			uuid;
 	struct list_head	entry;
 	struct kref		ref;
+	int			instance;
 };
 
 struct nvme_ns {
